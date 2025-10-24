@@ -1,0 +1,8 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Theme.Material3.DayNight" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Your existing theme attributes -->
+    </style>
+
+    <style name="Theme.GuerraEntreVecinos" parent="Base.Theme.GuerraEntreVecinos" />
+</resources>

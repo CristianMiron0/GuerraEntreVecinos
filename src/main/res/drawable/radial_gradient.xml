@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- res/drawable/radial_gradient.xml -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+
+    <gradient
+        android:type="radial"
+        android:gradientRadius="400dp"
+        android:centerX="0.5"
+        android:centerY="0.4"
+        android:startColor="#33FFFFFF"
+        android:endColor="#00000000" />
+
+</shape>

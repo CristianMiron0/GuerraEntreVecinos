@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "828079954681",
+    "project_id": "guerraentrevecinos",
+    "storage_bucket": "guerraentrevecinos.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:828079954681:android:6a859620615c3f66946028",
+        "android_client_info": {
+          "package_name": "com.example.guerraentrevecinos"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAn-H0G5Th-JH3Dr3EPh8OxSERyqEV-5AQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

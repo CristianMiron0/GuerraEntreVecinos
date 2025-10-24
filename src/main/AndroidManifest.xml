@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Guerra Entre Vecinos"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Material3.DayNight"
+        tools:targetApi="31">
+
+        <!-- Main Menu -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Game Mode Selection -->
+        <activity
+            android:name=".GameModeActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+        <!-- Setup Phase -->
+        <activity
+            android:name=".SetupActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+        <!-- Battle Phase -->
+        <activity
+            android:name=".BattleActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+        <!-- Mini Duel -->
+        <activity
+            android:name=".MiniDuelActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+        <!-- ✅ Statistics -->
+        <activity
+            android:name=".StatisticsActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+        <activity
+            android:name=".PowerSelectionActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+        <!-- Multiplayer Menu -->
+        <activity
+            android:name=".MultiplayerMenuActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+        <!-- Waiting Room -->
+        <activity
+            android:name=".WaitingRoomActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+        <!-- Multiplayer Setup -->
+        <activity
+            android:name=".MultiplayerSetupActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+        <!-- Multiplayer Battle -->
+        <activity
+            android:name=".MultiplayerBattleActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+    </application>
+
+</manifest>

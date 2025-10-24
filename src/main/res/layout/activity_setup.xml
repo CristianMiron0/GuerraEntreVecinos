@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#87CEEB">
+
+    <!-- ============================================ -->
+    <!-- NORTH: House + Unit Selection Menu (Top)    -->
+    <!-- ============================================ -->
+
+    <FrameLayout
+        android:id="@+id/northSection"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintHeight_percent="0.20">
+
+        <!-- House Background Image -->
+        <ImageView
+            android:id="@+id/houseImage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:src="@drawable/house_background"
+            android:contentDescription="House" />
+
+        <!-- Unit Selection Menu (overlay on house) -->
+        <LinearLayout
+            android:id="@+id/unitSelectionMenu"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:padding="8dp"
+            android:background="#CC000000">
+
+            <!-- Sunflower Button (x3) -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center">
+
+                <ImageButton
+                    android:id="@+id/btnSelectSunflower"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:src="@drawable/sunflower_icon"
+                    android:background="@drawable/unit_button_bg"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="Sunflower" />
+
+                <TextView
+                    android:id="@+id/tvSunflowerCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="x3"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginTop="4dp" />
+            </LinearLayout>
+
+            <!-- Rose Button (x2) -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center">
+
+                <ImageButton
+                    android:id="@+id/btnSelectRose"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:src="@drawable/rose_icon"
+                    android:background="@drawable/unit_button_bg"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="Rose" />
+
+                <TextView
+                    android:id="@+id/tvRoseCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="x2"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginTop="4dp" />
+            </LinearLayout>
+
+            <!-- Dog Button (x1) -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center">
+
+                <ImageButton
+                    android:id="@+id/btnSelectDog"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:src="@drawable/dog_icon"
+                    android:background="@drawable/unit_button_bg"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="Dog" />
+
+                <TextView
+                    android:id="@+id/tvDogCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="x1"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginTop="4dp" />
+            </LinearLayout>
+
+            <!-- Cat Button (x1) -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center">
+
+                <ImageButton
+                    android:id="@+id/btnSelectCat"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:src="@drawable/cat_icon"
+                    android:background="@drawable/unit_button_bg"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="Cat" />
+
+                <TextView
+                    android:id="@+id/tvCatCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="x1"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginTop="4dp" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </FrameLayout>
+
+    <!-- ============================================ -->
+    <!-- MIDDLE: 8x8 Grid (Garden/Battlefield)       -->
+    <!-- ============================================ -->
+
+    <FrameLayout
+        android:id="@+id/middleSection"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:background="#90EE90"
+        app:layout_constraintTop_toBottomOf="@id/northSection"
+        app:layout_constraintBottom_toTopOf="@id/southSection"
+        app:layout_constraintHeight_percent="0.60">
+
+        <!-- Grid Container -->
+        <GridLayout
+            android:id="@+id/gameGrid"
+            android:layout_width="445dp"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
+            android:columnCount="8"
+            android:padding="16dp"
+            android:rowCount="8">
+
+            <!-- Cells will be added programmatically -->
+
+        </GridLayout>
+
+    </FrameLayout>
+
+    <!-- ============================================ -->
+    <!-- SOUTH: Fence + Neighbor (Bottom)            -->
+    <!-- ============================================ -->
+
+    <FrameLayout
+        android:id="@+id/southSection"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintHeight_percent="0.20">
+
+        <!-- Fence Background -->
+        <ImageView
+            android:id="@+id/fenceImage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitXY"
+            android:src="@drawable/fence_background"
+            android:contentDescription="Fence" />
+
+        <!-- Neighbor Sprite -->
+        <ImageView
+            android:id="@+id/neighborSprite"
+            android:layout_width="120dp"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
+            android:src="@drawable/neighbor_sprite"
+            android:scaleType="fitCenter"
+            android:contentDescription="Neighbor" />
+
+    </FrameLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

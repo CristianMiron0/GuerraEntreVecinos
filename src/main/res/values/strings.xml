@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">GuerraEntreVecinos</string>
+    <string name="unit_count">x%d</string>
+</resources>

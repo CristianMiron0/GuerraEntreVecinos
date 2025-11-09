@@ -3,17 +3,23 @@ package com.example.guerraentrevecinos;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
+import android.util.Log;
 import android.view.View;
 import android.view.animation.BounceInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import com.example.guerraentrevecinos.databinding.ActivityMiniDuelBinding;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.ValueEventListener;
 import java.util.Random;
 
 public class MiniDuelActivity extends AppCompatActivity {
 
+    private static final String TAG = "MiniDuelActivity";
     private ActivityMiniDuelBinding binding;
     private int playerChoice = -1;
     private int enemyChoice = -1;
@@ -23,10 +29,19 @@ public class MiniDuelActivity extends AppCompatActivity {
     public static final String EXTRA_TARGET_ROW = "TARGET_ROW";
     public static final String EXTRA_TARGET_COL = "TARGET_COL";
     public static final String EXTRA_WAS_HIT = "WAS_HIT";
+    public static final String EXTRA_IS_MULTIPLAYER = "IS_MULTIPLAYER";
+    public static final String EXTRA_ROOM_CODE = "ROOM_CODE"; // ✅ NEW
 
     private boolean isGardenHoseActive = false;
     private int firstChoice = -1;
     private int secondChoice = -1;
+
+    // Multiplayer
+    private boolean isMultiplayer = false;
+    private String roomCode;
+    private FirebaseManager firebaseManager;
+    private ValueEventListener choiceListener;
+    private boolean waitingForOpponent = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,13 +51,27 @@ public class MiniDuelActivity extends AppCompatActivity {
 
         String unitType = getIntent().getStringExtra(EXTRA_UNIT_TYPE);
         isPlayerAttacking = getIntent().getBooleanExtra("IS_PLAYER_ATTACKING", true);
-        isGardenHoseActive = getIntent().getBooleanExtra("GARDEN_HOSE_ACTIVE", false); // ✅ NEW
+        isGardenHoseActive = getIntent().getBooleanExtra("GARDEN_HOSE_ACTIVE", false);
+        isMultiplayer = getIntent().getBooleanExtra(EXTRA_IS_MULTIPLAYER, false);
+        roomCode = getIntent().getStringExtra(EXTRA_ROOM_CODE); // ✅ NEW
+
+        Log.d(TAG, "========================================");
+        Log.d(TAG, "MiniDuel STARTED");
+        Log.d(TAG, "Unit Type: " + unitType);
+        Log.d(TAG, "Is Attacking: " + isPlayerAttacking);
+        Log.d(TAG, "Is Multiplayer: " + isMultiplayer);
+        Log.d(TAG, "Room Code: " + roomCode);
+        Log.d(TAG, "========================================");
+
+        if (isMultiplayer && roomCode != null) {
+            firebaseManager = FirebaseManager.getInstance();
+            startListeningForChoices();
+        }
 
         if (unitType != null) {
             binding.unitImage.setImageResource(getUnitIcon(unitType));
         }
 
-        // Update title based on role and power
         if (isPlayerAttacking) {
             if (isGardenHoseActive) {
                 binding.tvTitle.setText("⚔️💧 DOUBLE ATTACK!");
@@ -60,6 +89,60 @@ public class MiniDuelActivity extends AppCompatActivity {
         startCountdown();
     }
 
+    private void startListeningForChoices() {
+        Log.d(TAG, "Started listening for opponent's choice");
+
+        choiceListener = new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                // ✅ Always check, not just when waitingForOpponent
+
+                DataSnapshot lastAction = snapshot.child("lastAction");
+                Integer attackerChoice = lastAction.child("attackerChoice").getValue(Integer.class);
+                Integer defenderChoice = lastAction.child("defenderChoice").getValue(Integer.class);
+
+                Log.d(TAG, "Listener triggered - Attacker: " + attackerChoice +
+                        ", Defender: " + defenderChoice +
+                        ", MyChoice: " + playerChoice +
+                        ", Waiting: " + waitingForOpponent);
+
+                // Check if we have both choices AND we've made our choice
+                if (attackerChoice != null && defenderChoice != null && playerChoice != -1 && waitingForOpponent) {
+                    Log.d(TAG, "✅ Both choices available! Revealing result...");
+
+                    // Set the enemy's choice
+                    if (isPlayerAttacking) {
+                        enemyChoice = defenderChoice;
+                    } else {
+                        enemyChoice = attackerChoice;
+                    }
+
+                    // Stop listening and waiting
+                    waitingForOpponent = false;
+                    firebaseManager.removeRoomListener(roomCode, choiceListener);
+
+                    // Show result on UI thread
+                    runOnUiThread(() -> {
+                        Log.d(TAG, "Calling revealResult()");
+                        revealResult();
+                    });
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e(TAG, "Firebase listener error: " + error.getMessage());
+                runOnUiThread(() -> {
+                    Toast.makeText(MiniDuelActivity.this,
+                            "Connection error. Returning to game...", Toast.LENGTH_SHORT).show();
+                    finish();
+                });
+            }
+        };
+
+        firebaseManager.listenToRoom(roomCode, choiceListener);
+    }
+
     private void setupNumberButtons() {
         binding.btnNumber1.setOnClickListener(v -> selectNumber(1));
         binding.btnNumber2.setOnClickListener(v -> selectNumber(2));
@@ -68,7 +151,6 @@ public class MiniDuelActivity extends AppCompatActivity {
     }
 
     private void startCountdown() {
-        // Animate unit entrance
         binding.unitImage.setScaleX(0.3f);
         binding.unitImage.setScaleY(0.3f);
         binding.unitImage.setAlpha(0f);
@@ -80,30 +162,25 @@ public class MiniDuelActivity extends AppCompatActivity {
                 .setInterpolator(new OvershootInterpolator())
                 .start();
 
-        // Countdown: 3
         new Handler().postDelayed(() -> {
             binding.tvCountdown.setText("3");
             animateCountdownNumber();
         }, 500);
 
-        // Countdown: 2
         new Handler().postDelayed(() -> {
             binding.tvCountdown.setText("2");
             animateCountdownNumber();
         }, 1500);
 
-        // Countdown: 1
         new Handler().postDelayed(() -> {
             binding.tvCountdown.setText("1");
             animateCountdownNumber();
         }, 2500);
 
-        // CHOOSE!
         new Handler().postDelayed(() -> {
             binding.tvCountdown.setText("CHOOSE!");
             animateCountdownNumberLarge();
 
-            // Update instruction based on role
             if (isPlayerAttacking) {
                 binding.tvInstruction.setText("Pick your attack number!");
             } else {
@@ -183,41 +260,130 @@ public class MiniDuelActivity extends AppCompatActivity {
     }
 
     private void selectNumber(int number) {
-        if (playerChoice != -1) return; // Already selected
+        if (playerChoice != -1) return;
+
+        Log.d(TAG, "Player selected number: " + number);
 
         if (isGardenHoseActive && firstChoice == -1) {
-            // First choice with Garden Hose
             firstChoice = number;
-
-            // Highlight selected button
             highlightButton(number);
-
             Toast.makeText(this, "First choice: " + number + ". Pick a second number!",
                     Toast.LENGTH_SHORT).show();
             return;
         }
 
         if (isGardenHoseActive && firstChoice != -1) {
-            // Second choice with Garden Hose
             if (number == firstChoice) {
                 Toast.makeText(this, "Pick a different number!", Toast.LENGTH_SHORT).show();
                 return;
             }
             secondChoice = number;
-            playerChoice = firstChoice; // For return intent
+            playerChoice = firstChoice;
         } else {
-            // Normal single choice
             playerChoice = number;
         }
 
-        // Disable all buttons
         setButtonsEnabled(false);
 
-        // Generate enemy choice
-        enemyChoice = new Random().nextInt(4) + 1; // 1-4
+        if (isMultiplayer) {
+            // ✅ Set waiting flag BEFORE sending
+            waitingForOpponent = true;
 
-        // Wait for suspense
-        new Handler().postDelayed(this::revealResult, 800);
+            Log.d(TAG, "Multiplayer - Player chose: " + playerChoice + " (Attacking: " + isPlayerAttacking + ")");
+
+            binding.tvCountdown.setText("LOCKED IN!");
+            binding.tvInstruction.setText("⏳ Waiting for opponent...");
+
+            hideNumberButtons();
+
+            Toast.makeText(this, "✅ Choice locked! Waiting for opponent...", Toast.LENGTH_LONG).show();
+
+            // ✅ Save choice DIRECTLY to Firebase from here
+            saveChoiceToFirebase();
+
+        } else {
+            // Solo mode
+            enemyChoice = new Random().nextInt(4) + 1;
+            new Handler().postDelayed(this::revealResult, 800);
+        }
+    }
+
+    // ✅ NEW: Save choice directly to Firebase
+    private void saveChoiceToFirebase() {
+        String choiceKey = isPlayerAttacking ? "attackerChoice" : "defenderChoice";
+
+        Log.d(TAG, "Saving choice to Firebase: " + choiceKey + " = " + playerChoice);
+
+        firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                snapshot.getRef().child("lastAction").child(choiceKey).setValue(playerChoice)
+                        .addOnSuccessListener(aVoid -> {
+                            Log.d(TAG, "✅ " + choiceKey + " saved: " + playerChoice);
+
+                            // Immediately check if both choices are now available
+                            new Handler().postDelayed(() -> checkBothChoices(), 500);
+                        })
+                        .addOnFailureListener(e -> {
+                            Log.e(TAG, "❌ Failed to save choice: " + e.getMessage());
+                            runOnUiThread(() -> {
+                                Toast.makeText(MiniDuelActivity.this,
+                                        "Error saving choice. Returning...", Toast.LENGTH_SHORT).show();
+                                finish();
+                            });
+                        });
+
+                snapshot.getRef().removeEventListener(this);
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e(TAG, "Error: " + error.getMessage());
+            }
+        });
+    }
+
+    // ✅ Check if both choices exist
+    private void checkBothChoices() {
+        Log.d(TAG, "Checking for both choices...");
+
+        firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                DataSnapshot lastAction = snapshot.child("lastAction");
+                Integer attackerChoice = lastAction.child("attackerChoice").getValue(Integer.class);
+                Integer defenderChoice = lastAction.child("defenderChoice").getValue(Integer.class);
+
+                Log.d(TAG, "Check result - Attacker: " + attackerChoice +
+                        ", Defender: " + defenderChoice +
+                        ", MyChoice: " + playerChoice);
+
+                if (attackerChoice != null && defenderChoice != null) {
+                    Log.d(TAG, "✅ BOTH CHOICES FOUND!");
+
+                    // Set enemy choice
+                    if (isPlayerAttacking) {
+                        enemyChoice = defenderChoice;
+                    } else {
+                        enemyChoice = attackerChoice;
+                    }
+
+                    waitingForOpponent = false;
+
+                    runOnUiThread(() -> {
+                        Log.d(TAG, "Revealing result now!");
+                        revealResult();
+                    });
+                }
+
+                snapshot.getRef().removeEventListener(this);
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e(TAG, "Check error: " + error.getMessage());
+            }
+        });
     }
 
     private void highlightButton(int number) {
@@ -241,22 +407,17 @@ public class MiniDuelActivity extends AppCompatActivity {
         boolean wasHit;
 
         if (isGardenHoseActive) {
-            // Check if either choice matches
             wasHit = (firstChoice == enemyChoice || secondChoice == enemyChoice);
         } else {
             wasHit = (playerChoice == enemyChoice);
         }
 
-        // Hide countdown and instruction
+        Log.d(TAG, "Revealing result - wasHit: " + wasHit + ", player: " + playerChoice + ", enemy: " + enemyChoice);
+
         binding.tvCountdown.animate().alpha(0f).setDuration(200).start();
         binding.tvInstruction.animate().alpha(0f).setDuration(200).start();
 
-        // Hide buttons
-        hideNumberButtons();
-
-        // Show result
         new Handler().postDelayed(() -> {
-            // Show choices
             if (isPlayerAttacking) {
                 if (isGardenHoseActive) {
                     binding.tvChoices.setText("You: " + firstChoice + " & " + secondChoice +
@@ -271,7 +432,6 @@ public class MiniDuelActivity extends AppCompatActivity {
             binding.tvChoices.setAlpha(0f);
             binding.tvChoices.animate().alpha(1f).setDuration(300).start();
 
-            // Show result text
             if (wasHit) {
                 if (isPlayerAttacking) {
                     binding.tvResult.setText("💥 DIRECT HIT!\nUnit DESTROYED!");
@@ -300,7 +460,6 @@ public class MiniDuelActivity extends AppCompatActivity {
                     .setInterpolator(new BounceInterpolator())
                     .start();
 
-            // Return to battle
             new Handler().postDelayed(() -> returnToGame(wasHit), 2500);
 
         }, 500);
@@ -328,7 +487,6 @@ public class MiniDuelActivity extends AppCompatActivity {
     }
 
     private void animateUnitDestroyed() {
-        // Explosion animation - violent shake and fade
         binding.unitImage.animate()
                 .translationX(-20f)
                 .setDuration(50)
@@ -353,7 +511,6 @@ public class MiniDuelActivity extends AppCompatActivity {
     }
 
     private void animateUnitDamaged() {
-        // Damage animation - shake and flash
         binding.unitImage.animate()
                 .translationX(-10f)
                 .setDuration(50)
@@ -367,7 +524,6 @@ public class MiniDuelActivity extends AppCompatActivity {
                             }).start();
                 }).start();
 
-        // Flash red
         binding.unitImage.animate()
                 .alpha(0.3f)
                 .setDuration(100)
@@ -392,15 +548,14 @@ public class MiniDuelActivity extends AppCompatActivity {
     }
 
     private void returnToGame(boolean wasHit) {
+        Log.d(TAG, "Returning to game - wasHit: " + wasHit);
+
         Intent resultIntent = new Intent();
         resultIntent.putExtra(EXTRA_WAS_HIT, wasHit);
         resultIntent.putExtra(EXTRA_TARGET_ROW, getIntent().getIntExtra(EXTRA_TARGET_ROW, -1));
         resultIntent.putExtra(EXTRA_TARGET_COL, getIntent().getIntExtra(EXTRA_TARGET_COL, -1));
         resultIntent.putExtra("IS_PLAYER_ATTACKING", isPlayerAttacking);
-
-        // ✅ Pass choices back
-        resultIntent.putExtra("ATTACKER_CHOICE", playerChoice);
-        resultIntent.putExtra("DEFENDER_CHOICE", enemyChoice);
+        resultIntent.putExtra("FINAL_RESULT", true); // ✅ Signal this is the final result
 
         setResult(RESULT_OK, resultIntent);
         finish();
@@ -418,6 +573,14 @@ public class MiniDuelActivity extends AppCompatActivity {
                 return R.drawable.cat_icon;
             default:
                 return R.drawable.sunflower_icon;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (choiceListener != null && firebaseManager != null && roomCode != null) {
+            firebaseManager.removeRoomListener(roomCode, choiceListener);
         }
     }
 }

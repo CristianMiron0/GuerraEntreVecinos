@@ -87,6 +87,7 @@ public class FirebaseGameRoom {
         public int targetCol;
         public boolean wasHit;
         public boolean duelPending;
+        public String unitType;
         public long timestamp;
 
         public LastActionData() {}
@@ -99,6 +100,7 @@ public class FirebaseGameRoom {
             result.put("targetCol", targetCol);
             result.put("wasHit", wasHit);
             result.put("duelPending", duelPending);
+            result.put("unitType", unitType);
             result.put("timestamp", timestamp);
             return result;
         }

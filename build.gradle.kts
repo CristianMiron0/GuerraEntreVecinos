@@ -16,6 +16,9 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // ✅ Enable multidex if needed
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -52,16 +55,27 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-livedata:2.7.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel:2.7.0")
 
-    // ✅ CardView (for statistics cards)
+    // CardView (for statistics cards)
     implementation("androidx.cardview:cardview:1.0.0")
 
-    // ✅ RecyclerView (for game history list)
+    // RecyclerView (for game history list)
     implementation("androidx.recyclerview:recyclerview:1.3.2")
 
-    // ✅ Firebase
-    implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
+    // ✅ ViewPager2 (for How to Play guide)
+    implementation("androidx.viewpager2:viewpager2:1.0.0")
+
+    // ✅ Firebase BOM (Bill of Materials) - ensures compatible versions
+    implementation(platform("com.google.firebase:firebase-bom:32.7.4"))
+
+    // ✅ Firebase products (versions managed by BOM)
     implementation("com.google.firebase:firebase-database")
     implementation("com.google.firebase:firebase-auth")
+
+    // ✅ Optional: Firebase Analytics
+    implementation("com.google.firebase:firebase-analytics")
+
+    // ✅ Multidex support
+    implementation("androidx.multidex:multidex:2.0.1")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)

@@ -25,9 +25,9 @@ public class PowerManager {
         this.tier2Power = tier2Power;
     }
 
-    // Garden Hose (Double Attack in mini-duel)
+    // ✅ FIX: Garden Hose - activate and set cooldown
     public boolean canUseGardenHose() {
-        return gardenHoseCooldown <= 0;
+        return gardenHoseCooldown <= 0 && !gardenHoseActive;
     }
 
     public void activateGardenHose() {
@@ -41,6 +41,7 @@ public class PowerManager {
         return gardenHoseActive;
     }
 
+    // ✅ FIX: Deactivate after use (called after mini-duel)
     public void deactivateGardenHose() {
         gardenHoseActive = false;
     }
@@ -88,7 +89,7 @@ public class PowerManager {
         fenceProtectedUnit = null;
     }
 
-    // Reduce cooldowns each round
+    // ✅ FIX: Reduce cooldowns each round
     public void decrementCooldowns() {
         if (gardenHoseCooldown > 0) gardenHoseCooldown--;
         if (nighttimeRelocationCooldown > 0) nighttimeRelocationCooldown--;

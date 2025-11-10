@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
+import android.util.Log;
 import android.view.View;
 import android.widget.GridLayout;
 import android.widget.ImageView;
@@ -11,8 +12,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import com.example.guerraentrevecinos.FirebaseGameRoom;
-import com.example.guerraentrevecinos.FirebaseManager;
 import com.google.android.material.button.MaterialButton;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
@@ -22,6 +21,7 @@ import java.util.List;
 
 public class MultiplayerBattleActivity extends AppCompatActivity {
 
+    private static final String TAG = "MultiplayerBattle";
     private static final int REQUEST_CODE_MINI_DUEL = 100;
 
     // UI Components
@@ -46,40 +46,42 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
     // Multiplayer
     private FirebaseManager firebaseManager;
     private String roomCode;
-    private boolean isHost; // Player 1 is host
-    private String myPlayerKey; // "player1" or "player2"
+    private boolean isHost;
+    private String myPlayerKey;
     private String opponentPlayerKey;
     private ValueEventListener roomListener;
 
     // Powers
     private PowerManager powerManager;
     private String selectedPower;
-    private boolean isSelectingUnitForPower = false;
-    private String activePowerMode = null; // "move", "fence", "fertilizer", "spy"
-
-    // Abilities
     private AbilityManager abilityManager;
-    private SetupActivity.UnitPosition lastAttackedPlayerUnit = null;
 
-    // Pending action (waiting for mini-duel)
+    // Pending duel state
+    private boolean waitingForDuelResult = false;
     private int pendingAttackRow = -1;
     private int pendingAttackCol = -1;
-    private boolean isAttacker = false;
+    private String pendingUnitType = "";
+    private long lastProcessedActionTimestamp = 0; // Track processed actions
+    private boolean iAmAttackerInCurrentDuel = false; // Track role in current duel
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_battle);
 
+        Log.d(TAG, "onCreate started");
+
         // Get data
         roomCode = getIntent().getStringExtra("ROOM_CODE");
         isHost = getIntent().getBooleanExtra("IS_HOST", false);
         selectedPower = getIntent().getStringExtra("SELECTED_POWER");
         playerUnits = getIntent().getParcelableArrayListExtra("PLAYER_UNITS");
-        enemyUnits = new ArrayList<>(); // Will be synced from Firebase
+        enemyUnits = new ArrayList<>();
 
         myPlayerKey = isHost ? "player1" : "player2";
         opponentPlayerKey = isHost ? "player2" : "player1";
+
+        Log.d(TAG, "Room: " + roomCode + ", isHost: " + isHost + ", myKey: " + myPlayerKey);
 
         // Initialize managers
         firebaseManager = FirebaseManager.getInstance();
@@ -88,15 +90,11 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
         // Initialize views
         initializeViews();
-
-        // Setup power buttons
         setupPowerButtons();
-
-        // Create grids
         createPlayerGrid();
         createEnemyGrid();
 
-        // Initialize game state in Firebase
+        // Initialize game state if host
         if (isHost) {
             initializeGameState();
         }
@@ -121,7 +119,6 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         btnNighttimeRelocation = findViewById(R.id.btnNighttimeRelocation);
         btnTier2Power = findViewById(R.id.btnTier2Power);
 
-        // Set Tier 2 power icon
         switch (selectedPower) {
             case "spy_drone":
                 btnTier2Power.setText("🐝\nSpy");
@@ -134,26 +131,24 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                 break;
         }
 
-        // ✅ Garden Hose click
+        // ✅ Implement power button clicks
         btnGardenHose.setOnClickListener(v -> {
-            if (powerManager.canUseGardenHose()) {
+            if (powerManager.canUseGardenHose() && isMyTurn) {
                 powerManager.activateGardenHose();
-                Toast.makeText(this, "💧 Garden Hose activated! Pick 2 numbers in next duel.",
+                Toast.makeText(this, "💧 Garden Hose activated! Next attack picks 2 numbers.",
                         Toast.LENGTH_LONG).show();
                 updatePowerButtons();
             }
         });
 
-        // ✅ Nighttime Relocation click
         btnNighttimeRelocation.setOnClickListener(v -> {
-            if (powerManager.canUseNighttimeRelocation()) {
+            if (powerManager.canUseNighttimeRelocation() && isMyTurn) {
                 activateUnitSelectionMode("move");
             }
         });
 
-        // ✅ Tier 2 Power click
         btnTier2Power.setOnClickListener(v -> {
-            if (powerManager.canUseTier2Power()) {
+            if (powerManager.canUseTier2Power() && isMyTurn) {
                 handleTier2PowerClick();
             }
         });
@@ -174,6 +169,9 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                 break;
         }
     }
+
+    private boolean isSelectingUnitForPower = false;
+    private String activePowerMode = null;
 
     private void activateUnitSelectionMode(String powerMode) {
         isSelectingUnitForPower = true;
@@ -204,6 +202,9 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         int gridPadding = 32;
         int cellSize = (screenWidth - gridPadding) / 8;
 
+        playerGrid.setColumnCount(8);
+        playerGrid.setRowCount(8);
+
         for (int row = 0; row < 8; row++) {
             for (int col = 0; col < 8; col++) {
                 ImageView cell = new ImageView(this);
@@ -212,15 +213,14 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                 params.width = cellSize;
                 params.height = cellSize;
                 params.setMargins(2, 2, 2, 2);
-                params.rowSpec = GridLayout.spec(row);
-                params.columnSpec = GridLayout.spec(col);
+                params.rowSpec = GridLayout.spec(row, 1);
+                params.columnSpec = GridLayout.spec(col, 1);
                 cell.setLayoutParams(params);
 
                 cell.setBackgroundColor(Color.parseColor("#8FBC8F"));
                 cell.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
                 cell.setPadding(8, 8, 8, 8);
 
-                // Show player units
                 for (SetupActivity.UnitPosition unit : playerUnits) {
                     if (unit.row == row && unit.col == col) {
                         cell.setImageResource(getUnitIcon(unit.type));
@@ -231,7 +231,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
                 playerCells[row][col] = cell;
 
-                // ✅ Click listener for powers
+                // ✅ Add click listener for power usage
                 final int finalRow = row;
                 final int finalCol = col;
                 cell.setOnClickListener(v -> {
@@ -253,6 +253,9 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         int gridPadding = 32;
         int cellSize = (screenWidth - gridPadding) / 8;
 
+        enemyGrid.setColumnCount(8);
+        enemyGrid.setRowCount(8);
+
         for (int row = 0; row < 8; row++) {
             for (int col = 0; col < 8; col++) {
                 ImageView cell = new ImageView(this);
@@ -261,8 +264,8 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                 params.width = cellSize;
                 params.height = cellSize;
                 params.setMargins(2, 2, 2, 2);
-                params.rowSpec = GridLayout.spec(row);
-                params.columnSpec = GridLayout.spec(col);
+                params.rowSpec = GridLayout.spec(row, 1);
+                params.columnSpec = GridLayout.spec(col, 1);
                 cell.setLayoutParams(params);
 
                 cell.setBackgroundColor(Color.parseColor("#999999"));
@@ -289,6 +292,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
     }
 
     private void initializeGameState() {
+        Log.d(TAG, "Host initializing game state");
         FirebaseGameRoom.GameStateData gameState = new FirebaseGameRoom.GameStateData();
         gameState.currentRound = 1;
         gameState.currentTurn = "player1"; // Host goes first
@@ -296,35 +300,30 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         gameState.player2UnitsRemaining = 7;
 
         firebaseManager.updateGameState(roomCode, gameState);
-
-        firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                String status = snapshot.child("status").getValue(String.class);
-                if (!"playing".equals(status)) {
-                    snapshot.getRef().child("status").setValue("playing");
-                }
-            }
-
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {}
-        });
     }
 
     private void listenForGameUpdates() {
+        Log.d(TAG, "Starting to listen for game updates");
+
         roomListener = new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 if (!snapshot.exists()) {
+                    Log.e(TAG, "Room snapshot doesn't exist");
                     Toast.makeText(MultiplayerBattleActivity.this,
                             "Game ended", Toast.LENGTH_SHORT).show();
                     finish();
                     return;
                 }
 
+                Log.d(TAG, "Received game update");
+
+                // Get game state
                 DataSnapshot gameStateSnapshot = snapshot.child("gameState");
                 String currentTurn = gameStateSnapshot.child("currentTurn").getValue(String.class);
                 Integer round = gameStateSnapshot.child("currentRound").getValue(Integer.class);
+
+                Log.d(TAG, "Current turn: " + currentTurn + ", My turn: " + myPlayerKey + ", Round: " + round);
 
                 if (round != null && round != currentRound) {
                     currentRound = round;
@@ -333,66 +332,210 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                     updatePowerButtons();
                 }
 
+                // Update turn state
                 boolean newIsMyTurn = myPlayerKey.equals(currentTurn);
                 if (newIsMyTurn != isMyTurn) {
                     isMyTurn = newIsMyTurn;
                     hasAttackedThisTurn = false;
+                    waitingForDuelResult = false;
                     updateTurnIndicator();
                     setEnemyGridClickable(isMyTurn);
+                    Log.d(TAG, "Turn changed. My turn: " + isMyTurn);
                 }
 
+                // Check for pending action
                 DataSnapshot lastActionSnapshot = snapshot.child("lastAction");
                 if (lastActionSnapshot.exists()) {
                     String actionPlayer = lastActionSnapshot.child("player").getValue(String.class);
+                    String actionType = lastActionSnapshot.child("type").getValue(String.class);
+                    Boolean duelPending = lastActionSnapshot.child("duelPending").getValue(Boolean.class);
+                    Long timestamp = lastActionSnapshot.child("timestamp").getValue(Long.class);
 
-                    if (opponentPlayerKey.equals(actionPlayer)) {
-                        Boolean duelPending = lastActionSnapshot.child("duelPending").getValue(Boolean.class);
+                    // Only process new actions (prevent re-processing same action)
+                    if (timestamp != null && timestamp > lastProcessedActionTimestamp) {
+                        Log.d(TAG, "NEW Action - player: " + actionPlayer + ", type: " + actionType +
+                                ", duelPending: " + duelPending + ", timestamp: " + timestamp);
 
-                        if (duelPending != null && duelPending) {
+                        // DEFENDER: Opponent attacked me
+                        if (opponentPlayerKey.equals(actionPlayer) &&
+                                "attack".equals(actionType) &&
+                                duelPending != null && duelPending) {
+
                             Integer targetRow = lastActionSnapshot.child("targetRow").getValue(Integer.class);
                             Integer targetCol = lastActionSnapshot.child("targetCol").getValue(Integer.class);
-                            Boolean wasHit = lastActionSnapshot.child("wasHit").getValue(Boolean.class);
 
-                            if (targetRow != null && targetCol != null && wasHit != null && wasHit) {
-                                SetupActivity.UnitPosition hitUnit = null;
-                                for (SetupActivity.UnitPosition unit : playerUnits) {
-                                    if (unit.row == targetRow && unit.col == targetCol && unit.health > 0) {
-                                        hitUnit = unit;
-                                        break;
-                                    }
-                                }
+                            if (targetRow != null && targetCol != null) {
+                                Log.d(TAG, "I'M DEFENDING! Opponent attacked at (" + targetRow + "," + targetCol + ")");
+
+                                lastProcessedActionTimestamp = timestamp;
+
+                                // Check if there's actually a unit here
+                                // ✅ FIX: Use final reference for lambda
+                                final SetupActivity.UnitPosition hitUnit = findUnitAtPosition(targetRow, targetCol);
 
                                 if (hitUnit != null) {
+                                    // UNIT HIT - Launch defender mini-duel
+                                    Log.d(TAG, "HIT! Unit type: " + hitUnit.type + " - Launching DEFENDER duel");
+
+                                    waitingForDuelResult = true;
+                                    iAmAttackerInCurrentDuel = false; // Mark that I'm defending
                                     pendingAttackRow = targetRow;
                                     pendingAttackCol = targetCol;
-                                    isAttacker = false;
+                                    pendingUnitType = hitUnit.type;
 
                                     showRockFalling(targetRow, targetCol);
 
-                                    SetupActivity.UnitPosition finalHitUnit = hitUnit;
+                                    // Update action to indicate unit was found and include unit type
+                                    FirebaseGameRoom.LastActionData responseAction = new FirebaseGameRoom.LastActionData();
+                                    responseAction.type = "duel_ready";
+                                    responseAction.player = myPlayerKey;
+                                    responseAction.targetRow = targetRow;
+                                    responseAction.targetCol = targetCol;
+                                    responseAction.wasHit = true;
+                                    responseAction.duelPending = true;
+                                    responseAction.unitType = hitUnit.type;
+                                    responseAction.timestamp = System.currentTimeMillis();
+
+                                    firebaseManager.sendAction(roomCode, responseAction);
+
+                                    // ✅ FIX: Use final variables in lambda
+                                    final int finalRow = targetRow;
+                                    final int finalCol = targetCol;
+                                    final String finalUnitType = hitUnit.type;
+
+                                    // Launch defender mini-duel after animation
                                     new Handler().postDelayed(() -> {
-                                        launchMiniDuel(targetRow, targetCol, finalHitUnit.type, false);
+                                        Log.d(TAG, "Launching DEFENDER mini-duel NOW");
+                                        launchMiniDuel(finalRow, finalCol, finalUnitType, false);
                                     }, 1500);
 
-                                    snapshot.getRef().child("lastAction").child("duelPending").setValue(false);
+                                } else {
+                                    // MISS - No unit here
+                                    Log.d(TAG, "MISS! No unit at (" + targetRow + "," + targetCol + ")");
+
+                                    FirebaseGameRoom.LastActionData missAction = new FirebaseGameRoom.LastActionData();
+                                    missAction.type = "miss";
+                                    missAction.player = myPlayerKey;
+                                    missAction.targetRow = targetRow;
+                                    missAction.targetCol = targetCol;
+                                    missAction.wasHit = false;
+                                    missAction.duelPending = false;
+                                    missAction.timestamp = System.currentTimeMillis();
+
+                                    firebaseManager.sendAction(roomCode, missAction);
                                 }
                             }
                         }
+
+                        // ATTACKER: Received response from defender
+                        else if (opponentPlayerKey.equals(actionPlayer) && "duel_ready".equals(actionType)) {
+                            // Defender confirmed there's a unit - launch attacker duel
+                            Integer targetRow = lastActionSnapshot.child("targetRow").getValue(Integer.class);
+                            Integer targetCol = lastActionSnapshot.child("targetCol").getValue(Integer.class);
+                            Boolean wasHit = lastActionSnapshot.child("wasHit").getValue(Boolean.class);
+                            String unitType = lastActionSnapshot.child("unitType").getValue(String.class);
+
+                            if (wasHit != null && wasHit && targetRow != null && targetCol != null) {
+                                Log.d(TAG, "Defender confirmed HIT! Launching ATTACKER duel. Unit: " + unitType);
+
+                                lastProcessedActionTimestamp = timestamp;
+
+                                // ✅ FIX: Use final variables for lambda
+                                final int finalRow = targetRow;
+                                final int finalCol = targetCol;
+                                final String finalUnitType = unitType != null ? unitType : "sunflower";
+
+                                // Launch attacker mini-duel
+                                runOnUiThread(() -> {
+                                    Log.d(TAG, "Launching ATTACKER mini-duel NOW");
+                                    launchMiniDuel(finalRow, finalCol, finalUnitType, true);
+                                });
+                            }
+                        }
+
+                        // ATTACKER: Received miss notification from defender
+                        else if (opponentPlayerKey.equals(actionPlayer) && "miss".equals(actionType)) {
+                            Integer targetRow = lastActionSnapshot.child("targetRow").getValue(Integer.class);
+                            Integer targetCol = lastActionSnapshot.child("targetCol").getValue(Integer.class);
+
+                            Log.d(TAG, "Defender confirmed MISS at (" + targetRow + "," + targetCol + ")");
+
+                            lastProcessedActionTimestamp = timestamp;
+
+                            // Show miss
+                            if (targetRow != null && targetCol != null) {
+                                final int finalRow = targetRow;
+                                final int finalCol = targetCol;
+
+                                runOnUiThread(() -> showMissOnEnemyGrid(finalRow, finalCol));
+                            }
+
+                            waitingForDuelResult = false;
+
+                            // End turn
+                            new Handler().postDelayed(() -> endMyTurn(), 1500);
+                        }
+
+                        // BOTH PLAYERS: Check if both choices are in
+                        if (waitingForDuelResult) {
+                            // Always check for both choices when waiting
+                            Integer attackerChoice = lastActionSnapshot.child("attackerChoice").getValue(Integer.class);
+                            Integer defenderChoice = lastActionSnapshot.child("defenderChoice").getValue(Integer.class);
+
+                            Log.d(TAG, "Checking choices - Attacker: " + attackerChoice +
+                                    ", Defender: " + defenderChoice + ", Waiting: " + waitingForDuelResult);
+
+                            if (attackerChoice != null && defenderChoice != null) {
+                                Log.d(TAG, "✅ BOTH CHOICES RECEIVED! Attacker: " + attackerChoice +
+                                        ", Defender: " + defenderChoice);
+
+                                // Only process once
+                                if (timestamp != null && timestamp > lastProcessedActionTimestamp) {
+                                    lastProcessedActionTimestamp = timestamp;
+
+                                    // Calculate result
+                                    boolean wasHit = attackerChoice.equals(defenderChoice);
+
+                                    Integer targetRow = lastActionSnapshot.child("targetRow").getValue(Integer.class);
+                                    Integer targetCol = lastActionSnapshot.child("targetCol").getValue(Integer.class);
+
+                                    Log.d(TAG, "Choices match: " + wasHit + " - Processing result as " +
+                                            (iAmAttackerInCurrentDuel ? "ATTACKER" : "DEFENDER"));
+
+                                    if (targetRow != null && targetCol != null) {
+                                        // Use the role we stored when duel started
+                                        if (iAmAttackerInCurrentDuel) {
+                                            Log.d(TAG, "Processing result as ATTACKER");
+                                            handleMyAttackResult(targetRow, targetCol, wasHit);
+                                        } else {
+                                            Log.d(TAG, "Processing result as DEFENDER");
+                                            handleOpponentAttackResult(targetRow, targetCol, wasHit);
+                                        }
+                                    }
+
+                                    waitingForDuelResult = false;
+                                }
+                            }
+                        }
+                    } else {
+                        Log.d(TAG, "Ignoring old/duplicate action with timestamp: " + timestamp);
                     }
                 }
 
+                // Check win condition
                 Integer p1Units = gameStateSnapshot.child("player1UnitsRemaining").getValue(Integer.class);
                 Integer p2Units = gameStateSnapshot.child("player2UnitsRemaining").getValue(Integer.class);
 
                 if (p1Units != null && p1Units == 0) {
-                    endGame(false);
+                    endGame(!isHost);
                 } else if (p2Units != null && p2Units == 0) {
-                    endGame(true);
+                    endGame(isHost);
                 }
             }
 
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
+                Log.e(TAG, "Firebase listener cancelled: " + error.getMessage());
                 Toast.makeText(MultiplayerBattleActivity.this,
                         "Connection error", Toast.LENGTH_SHORT).show();
             }
@@ -402,6 +545,8 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
     }
 
     private void onEnemyCellClicked(int row, int col) {
+        Log.d(TAG, "Enemy cell clicked: (" + row + "," + col + ")");
+
         if (!isMyTurn) {
             Toast.makeText(this, "Wait for your turn!", Toast.LENGTH_SHORT).show();
             return;
@@ -412,37 +557,50 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
             return;
         }
 
+        if (waitingForDuelResult) {
+            Toast.makeText(this, "Wait for current action to complete!", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         hasAttackedThisTurn = true;
+        waitingForDuelResult = true;
+        iAmAttackerInCurrentDuel = true; // Mark that I'm attacking
         setEnemyGridClickable(false);
 
+        pendingAttackRow = row;
+        pendingAttackCol = col;
+
+        // Send attack action to Firebase - defender will check if there's a unit
         FirebaseGameRoom.LastActionData action = new FirebaseGameRoom.LastActionData();
         action.type = "attack";
         action.player = myPlayerKey;
         action.targetRow = row;
         action.targetCol = col;
-        action.wasHit = true;
+        action.wasHit = false; // Will be determined by defender
         action.duelPending = true;
         action.timestamp = System.currentTimeMillis();
 
         firebaseManager.sendAction(roomCode, action);
 
-        pendingAttackRow = row;
-        pendingAttackCol = col;
-        isAttacker = true;
+        Log.d(TAG, "Attack sent to Firebase: (" + row + "," + col + ") - waiting for defender response");
 
-        new Handler().postDelayed(() -> {
-            Toast.makeText(this, "Attacking (" + row + "," + col + ")...",
-                    Toast.LENGTH_SHORT).show();
-        }, 500);
+        // Show attacking animation
+        Toast.makeText(this, "Attacking (" + row + "," + col + ")...", Toast.LENGTH_SHORT).show();
+
+        // Don't launch mini-duel yet - wait for defender to respond
     }
 
     private void launchMiniDuel(int row, int col, String unitType, boolean isPlayerAttacking) {
+        Log.d(TAG, "Launching mini-duel. Attacking: " + isPlayerAttacking + ", Unit: " + unitType);
+
         Intent intent = new Intent(this, MiniDuelActivity.class);
         intent.putExtra(MiniDuelActivity.EXTRA_UNIT_TYPE, unitType);
         intent.putExtra(MiniDuelActivity.EXTRA_TARGET_ROW, row);
         intent.putExtra(MiniDuelActivity.EXTRA_TARGET_COL, col);
         intent.putExtra("IS_PLAYER_ATTACKING", isPlayerAttacking);
         intent.putExtra("GARDEN_HOSE_ACTIVE", powerManager.isGardenHoseActive());
+        intent.putExtra(MiniDuelActivity.EXTRA_IS_MULTIPLAYER, true);
+        intent.putExtra(MiniDuelActivity.EXTRA_ROOM_CODE, roomCode); // ✅ Pass room code
         startActivityForResult(intent, REQUEST_CODE_MINI_DUEL);
     }
 
@@ -451,321 +609,254 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
 
         if (requestCode == REQUEST_CODE_MINI_DUEL && resultCode == RESULT_OK) {
+            // ✅ Only handle final result - MiniDuel handles saving choices itself
             boolean wasHit = data.getBooleanExtra(MiniDuelActivity.EXTRA_WAS_HIT, false);
+            int row = pendingAttackRow;
+            int col = pendingAttackCol;
 
-            if (isAttacker) {
-                if (wasHit) {
-                    updateUnitsRemaining(opponentPlayerKey, -1);
+            Log.d(TAG, "Received FINAL result from mini-duel - wasHit: " + wasHit);
 
-                    ImageView cell = enemyCells[pendingAttackRow][pendingAttackCol];
-                    cell.setBackgroundColor(Color.parseColor("#FF0000"));
-                    cell.setImageResource(R.drawable.explosion_icon);
-                    cell.setAlpha(1f);
-                    enemyRevealedCells[pendingAttackRow][pendingAttackCol] = true;
-
-                    Toast.makeText(this, "Enemy unit destroyed!", Toast.LENGTH_SHORT).show();
-                } else {
-                    ImageView cell = enemyCells[pendingAttackRow][pendingAttackCol];
-                    cell.setBackgroundColor(Color.parseColor("#FFA500"));
-                    cell.setAlpha(1f);
-                    enemyRevealedCells[pendingAttackRow][pendingAttackCol] = true;
-
-                    Toast.makeText(this, "Enemy unit damaged!", Toast.LENGTH_SHORT).show();
-                }
-
-                endMyTurn();
-
+            if (iAmAttackerInCurrentDuel) {
+                handleMyAttackResult(row, col, wasHit);
             } else {
-                SetupActivity.UnitPosition unit = null;
-                for (SetupActivity.UnitPosition u : playerUnits) {
-                    if (u.row == pendingAttackRow && u.col == pendingAttackCol && u.health > 0) {
-                        unit = u;
-                        break;
-                    }
-                }
-
-                if (unit != null) {
-                    if (wasHit) {
-                        // ✅ Check if cat and teleport
-                        if (unit.type.equals("cat") && !unit.abilityUsed) {
-                            boolean teleported = abilityManager.activateCatTeleport(
-                                    unit, playerCells, playerUnits, true);
-                            if (teleported) {
-                                unit.health = 1;
-                                Toast.makeText(this, "Your cat survived by teleporting!", Toast.LENGTH_LONG).show();
-                                return;
-                            }
-                        }
-
-                        unit.health = 0;
-                        updateUnitsRemaining(myPlayerKey, -1);
-
-                        ImageView cell = playerCells[unit.row][unit.col];
-                        cell.setBackgroundColor(Color.parseColor("#8B4513"));
-                        cell.setImageResource(R.drawable.explosion_icon);
-
-                        cell.animate()
-                                .scaleX(0.5f)
-                                .scaleY(0.5f)
-                                .alpha(0.5f)
-                                .setDuration(600)
-                                .start();
-
-                        Toast.makeText(this, "Your unit was destroyed!", Toast.LENGTH_LONG).show();
-                    } else {
-                        // ✅ Check fence shield
-                        if (powerManager.isUnitProtected(unit)) {
-                            ImageView cell = playerCells[unit.row][unit.col];
-                            cell.setBackgroundColor(Color.parseColor("#8FBC8F"));
-
-                            cell.animate()
-                                    .scaleX(1.3f)
-                                    .scaleY(1.3f)
-                                    .setDuration(200)
-                                    .withEndAction(() -> {
-                                        cell.animate().scaleX(1f).scaleY(1f).setDuration(200).start();
-                                    })
-                                    .start();
-
-                            powerManager.removeFenceProtection();
-                            Toast.makeText(this, "🛡️ Fence Shield absorbed the attack!", Toast.LENGTH_LONG).show();
-                            return;
-                        }
-
-                        unit.health--;
-                        lastAttackedPlayerUnit = unit;
-
-                        ImageView cell = playerCells[unit.row][unit.col];
-
-                        // ✅ Check if rose and activate color change
-                        if (unit.type.equals("rose") && !unit.abilityUsed) {
-                            abilityManager.activateRoseColorChange(unit, cell);
-                        }
-
-                        if (unit.health == 1) {
-                            cell.setBackgroundColor(Color.parseColor("#FFA500"));
-
-                            if (unit.type.equals("rose")) {
-                                cell.setImageResource(abilityManager.getRoseIcon(unit));
-                            } else {
-                                cell.setImageResource(getUnitIcon(unit.type));
-                            }
-
-                            Toast.makeText(this, "Your unit was damaged!", Toast.LENGTH_LONG).show();
-
-                            // ✅ Check if dog and activate fear
-                            if (unit.type.equals("dog") && !unit.abilityUsed) {
-                                abilityManager.activateDogFear(unit, cell);
-                            }
-                        }
-                    }
-                }
+                handleOpponentAttackResult(row, col, wasHit);
             }
+
+            waitingForDuelResult = false;
         }
     }
 
-    // ✅ Handle player grid clicks for powers
-    private void onPlayerCellClickedForPower(int row, int col) {
-        if (!isSelectingUnitForPower) return;
+    private void sendDuelChoice(int row, int col, int choice, boolean isAttacker) {
+        Log.d(TAG, "=== SENDING DUEL CHOICE ===");
+        Log.d(TAG, "IsAttacker: " + isAttacker + ", Choice: " + choice);
+        Log.d(TAG, "Row: " + row + ", Col: " + col);
 
-        ImageView cell = playerCells[row][col];
-        SetupActivity.UnitPosition unit = null;
+        String choiceKey = isAttacker ? "attackerChoice" : "defenderChoice";
 
-        for (SetupActivity.UnitPosition u : playerUnits) {
-            if (u.row == row && u.col == col && u.health > 0) {
-                unit = u;
-                break;
-            }
-        }
-
-        if (unit == null) {
-            Toast.makeText(this, "No unit here!", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        switch (activePowerMode) {
-            case "move":
-                handleNighttimeRelocation(unit);
-                break;
-            case "fence":
-                handleFenceShield(unit);
-                break;
-            case "fertilizer":
-                handleFertilizer(unit);
-                break;
-        }
-    }
-
-    private void handleNighttimeRelocation(SetupActivity.UnitPosition unit) {
-        new androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle("🌙 Move " + unit.type)
-                .setMessage("Choose direction:")
-                .setPositiveButton("⬆️ Up", (dialog, which) -> moveUnit(unit, -1, 0))
-                .setNeutralButton("⬇️ Down", (dialog, which) -> moveUnit(unit, 1, 0))
-                .setNegativeButton("⬅️ Left", (dialog, which) -> moveUnit(unit, 0, -1))
-                .create()
-                .show();
-
-        new Handler().postDelayed(() -> {
-            new androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("🌙 Move " + unit.type)
-                    .setMessage("Or:")
-                    .setPositiveButton("➡️ Right", (dialog, which) -> moveUnit(unit, 0, 1))
-                    .setNegativeButton("Cancel", null)
-                    .create()
-                    .show();
-        }, 100);
-    }
-
-    private void moveUnit(SetupActivity.UnitPosition unit, int rowOffset, int colOffset) {
-        int newRow = unit.row + rowOffset;
-        int newCol = unit.col + colOffset;
-
-        if (newRow < 0 || newRow >= 8 || newCol < 0 || newCol >= 8) {
-            Toast.makeText(this, "Can't move outside the grid!", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        for (SetupActivity.UnitPosition u : playerUnits) {
-            if (u.row == newRow && u.col == newCol && u.health > 0) {
-                Toast.makeText(this, "Cell is occupied!", Toast.LENGTH_SHORT).show();
-                return;
-            }
-        }
-
-        ImageView oldCell = playerCells[unit.row][unit.col];
-        oldCell.setImageDrawable(null);
-        oldCell.setTag(null);
-
-        unit.row = newRow;
-        unit.col = newCol;
-
-        ImageView newCell = playerCells[newRow][newCol];
-        newCell.setImageResource(getUnitIcon(unit.type));
-        newCell.setTag(unit);
-
-        newCell.setScaleX(0.3f);
-        newCell.setScaleY(0.3f);
-        newCell.animate()
-                .scaleX(1f)
-                .scaleY(1f)
-                .setDuration(400)
-                .start();
-
-        powerManager.useNighttimeRelocation();
-
-        isSelectingUnitForPower = false;
-        activePowerMode = null;
-        tvTurnIndicator.setText(isMyTurn ? "YOUR TURN - ATTACK!" : "OPPONENT'S TURN");
-        updatePowerButtons();
-
-        Toast.makeText(this, "🌙 Unit moved successfully!", Toast.LENGTH_SHORT).show();
-    }
-
-    private void handleFenceShield(SetupActivity.UnitPosition unit) {
-        powerManager.setFenceProtectedUnit(unit);
-        powerManager.useTier2Power();
-
-        ImageView cell = playerCells[unit.row][unit.col];
-        cell.setBackgroundColor(android.graphics.Color.parseColor("#4DB6AC"));
-
-        Toast.makeText(this, "🛡️ " + unit.type + " is now protected!", Toast.LENGTH_LONG).show();
-
-        isSelectingUnitForPower = false;
-        activePowerMode = null;
-        tvTurnIndicator.setText(isMyTurn ? "YOUR TURN - ATTACK!" : "OPPONENT'S TURN");
-        updatePowerButtons();
-    }
-
-    private void handleFertilizer(SetupActivity.UnitPosition unit) {
-        if (unit.health >= 2) {
-            Toast.makeText(this, "Unit is already at full health!", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        unit.health = 2;
-
-        ImageView cell = playerCells[unit.row][unit.col];
-        cell.setBackgroundColor(android.graphics.Color.parseColor("#8FBC8F"));
-
-        cell.animate()
-                .scaleX(1.2f)
-                .scaleY(1.2f)
-                .setDuration(200)
-                .withEndAction(() -> {
-                    cell.animate()
-                            .scaleX(1f)
-                            .scaleY(1f)
-                            .setDuration(200)
-                            .start();
-                })
-                .start();
-
-        powerManager.useTier2Power();
-
-        Toast.makeText(this, "🌱 " + unit.type + " healed to full HP!", Toast.LENGTH_LONG).show();
-
-        isSelectingUnitForPower = false;
-        activePowerMode = null;
-        tvTurnIndicator.setText(isMyTurn ? "YOUR TURN - ATTACK!" : "OPPONENT'S TURN");
-        updatePowerButtons();
-    }
-
-    private void onEnemyCellClickedForPower(int row, int col) {
-        if (!isSelectingUnitForPower || !activePowerMode.equals("spy")) return;
-
-        revealAreaWithSpyDrone(row, col);
-    }
-
-    private void revealAreaWithSpyDrone(int centerRow, int centerCol) {
-        int revealed = 0;
-
-        for (int row = centerRow - 1; row <= centerRow + 1; row++) {
-            for (int col = centerCol - 1; col <= centerCol + 1; col++) {
-                if (row >= 0 && row < 8 && col >= 0 && col < 8) {
-                    ImageView cell = enemyCells[row][col];
-
-                    if (!enemyRevealedCells[row][col]) {
-                        enemyRevealedCells[row][col] = true;
-                        cell.setBackgroundColor(android.graphics.Color.parseColor("#C5E1A5"));
-                        cell.setAlpha(1f);
-                        revealed++;
-                    }
-                }
-            }
-        }
-
-        powerManager.useTier2Power();
-
-        Toast.makeText(this, "🐝 Revealed " + revealed + " cells!", Toast.LENGTH_LONG).show();
-
-        isSelectingUnitForPower = false;
-        activePowerMode = null;
-        tvTurnIndicator.setText(isMyTurn ? "YOUR TURN - ATTACK!" : "OPPONENT'S TURN");
-        updatePowerButtons();
-    }
-
-    private void endMyTurn() {
-        String newTurn = opponentPlayerKey;
-
+        // First update the choice value
         firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
-                snapshot.getRef().child("gameState").child("currentTurn").setValue(newTurn);
+                Log.d(TAG, "Saving " + choiceKey + " = " + choice);
 
-                if ("player1".equals(newTurn)) {
-                    Integer currentRound = snapshot.child("gameState").child("currentRound").getValue(Integer.class);
-                    if (currentRound != null) {
-                        snapshot.getRef().child("gameState").child("currentRound").setValue(currentRound + 1);
-                    }
-                }
+                snapshot.getRef().child("lastAction").child(choiceKey).setValue(choice)
+                        .addOnSuccessListener(aVoid -> {
+                            Log.d(TAG, "✅ Choice saved successfully: " + choiceKey + " = " + choice);
+
+                            // Verify it was saved
+                            snapshot.getRef().child("lastAction").child(choiceKey).get()
+                                    .addOnSuccessListener(dataSnapshot -> {
+                                        Integer savedValue = dataSnapshot.getValue(Integer.class);
+                                        Log.d(TAG, "Verification - " + choiceKey + " in DB: " + savedValue);
+                                    });
+
+                            // Then update the action type to trigger listener
+                            FirebaseGameRoom.LastActionData choiceAction = new FirebaseGameRoom.LastActionData();
+                            choiceAction.type = isAttacker ? "attacker_choice" : "defender_choice";
+                            choiceAction.player = myPlayerKey;
+                            choiceAction.targetRow = row;
+                            choiceAction.targetCol = col;
+                            choiceAction.timestamp = System.currentTimeMillis();
+
+                            firebaseManager.sendAction(roomCode, choiceAction);
+                        })
+                        .addOnFailureListener(e -> {
+                            Log.e(TAG, "❌ Failed to save choice: " + e.getMessage());
+                        });
 
                 snapshot.getRef().removeEventListener(this);
             }
 
             @Override
-            public void onCancelled(@NonNull DatabaseError error) {}
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e(TAG, "Error sending choice: " + error.getMessage());
+            }
         });
+
+        // Show waiting UI
+        runOnUiThread(() -> {
+            Toast.makeText(this, "Waiting for opponent's choice...", Toast.LENGTH_LONG).show();
+        });
+    }
+
+    private void handleMyAttackResult(int row, int col, boolean wasHit) {
+        Log.d(TAG, "Handling my attack result at (" + row + "," + col + "), wasHit: " + wasHit);
+
+        runOnUiThread(() -> {
+            if (wasHit) {
+                updateUnitsRemaining(opponentPlayerKey, -1);
+
+                ImageView cell = enemyCells[row][col];
+                cell.setBackgroundColor(Color.parseColor("#FF0000"));
+                cell.setImageResource(R.drawable.explosion_icon);
+                cell.setAlpha(1f);
+                enemyRevealedCells[row][col] = true;
+
+                Toast.makeText(this, "💥 Direct hit! Enemy unit destroyed!", Toast.LENGTH_LONG).show();
+            } else {
+                ImageView cell = enemyCells[row][col];
+                cell.setBackgroundColor(Color.parseColor("#FFA500"));
+                cell.setAlpha(1f);
+                enemyRevealedCells[row][col] = true;
+
+                Toast.makeText(this, "⚡ Partial hit! Enemy unit damaged!", Toast.LENGTH_LONG).show();
+            }
+        });
+
+        // Clear choices and end turn
+        new Handler().postDelayed(() -> {
+            clearChoices();
+            endMyTurn();
+        }, 2000);
+    }
+
+    private void handleOpponentAttackResult(int row, int col, boolean wasHit) {
+        Log.d(TAG, "Handling opponent attack result at (" + row + "," + col + "), wasHit: " + wasHit);
+
+        SetupActivity.UnitPosition unit = findUnitAtPosition(row, col);
+
+        runOnUiThread(() -> {
+            if (unit != null) {
+                // ✅ Check fence protection
+                if (powerManager.isUnitProtected(unit)) {
+                    ImageView cell = playerCells[unit.row][unit.col];
+                    cell.setBackgroundColor(Color.parseColor("#8FBC8F"));
+                    cell.animate().scaleX(1.3f).scaleY(1.3f).setDuration(200)
+                            .withEndAction(() -> cell.animate().scaleX(1f).scaleY(1f).setDuration(200).start())
+                            .start();
+
+                    powerManager.removeFenceProtection();
+                    Toast.makeText(this, "🛡️ Fence Shield absorbed the attack!", Toast.LENGTH_LONG).show();
+                    return;
+                }
+
+                if (wasHit) {
+                    // ✅ Check cat teleport ability before destruction
+                    if (unit.type.equals("cat") && !unit.abilityUsed) {
+                        boolean teleported = abilityManager.activateCatTeleport(
+                                unit, playerCells, playerUnits, true);
+                        if (teleported) {
+                            unit.health = 1;
+                            return;
+                        }
+                    }
+
+                    unit.health = 0;
+                    updateUnitsRemaining(myPlayerKey, -1);
+
+                    ImageView cell = playerCells[unit.row][unit.col];
+                    cell.setBackgroundColor(Color.parseColor("#8B4513"));
+                    cell.setImageResource(R.drawable.explosion_icon);
+
+                    cell.animate()
+                            .scaleX(0.5f)
+                            .scaleY(0.5f)
+                            .alpha(0.5f)
+                            .setDuration(600)
+                            .start();
+
+                    Toast.makeText(this, "💀 Your unit was destroyed!", Toast.LENGTH_LONG).show();
+                } else {
+                    // Damaged
+                    unit.health--;
+
+                    ImageView cell = playerCells[unit.row][unit.col];
+
+                    // ✅ Rose ability - change color
+                    if (unit.type.equals("rose") && !unit.abilityUsed) {
+                        abilityManager.activateRoseColorChange(unit, cell);
+                    }
+
+                    cell.setBackgroundColor(Color.parseColor("#FFA500"));
+
+                    // ✅ Use correct icon for rose
+                    if (unit.type.equals("rose")) {
+                        cell.setImageResource(abilityManager.getRoseIcon(unit));
+                    } else {
+                        cell.setImageResource(getUnitIcon(unit.type));
+                    }
+
+                    // ✅ Dog ability - activate fear
+                    if (unit.type.equals("dog") && !unit.abilityUsed) {
+                        abilityManager.activateDogFear(unit, cell);
+                    }
+
+                    Toast.makeText(this, "🛡️ Your unit was damaged!", Toast.LENGTH_LONG).show();
+                }
+            }
+        });
+
+        new Handler().postDelayed(this::clearChoices, 2000);
+    }
+
+    private void clearDuelPending() {
+        Log.d(TAG, "Clearing duel pending flag");
+
+        // Create a clear action that resets everything
+        FirebaseGameRoom.LastActionData clearAction = new FirebaseGameRoom.LastActionData();
+        clearAction.type = "cleared";
+        clearAction.player = myPlayerKey;
+        clearAction.duelPending = false;
+        clearAction.wasHit = false;
+        clearAction.timestamp = System.currentTimeMillis();
+
+        firebaseManager.sendAction(roomCode, clearAction);
+    }
+
+    private void clearChoices() {
+        Log.d(TAG, "Clearing choices from Firebase");
+
+        firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                // Clear both choices
+                snapshot.getRef().child("lastAction").child("attackerChoice").removeValue();
+                snapshot.getRef().child("lastAction").child("defenderChoice").removeValue();
+
+                Log.d(TAG, "Choices cleared");
+                snapshot.getRef().removeEventListener(this);
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e(TAG, "Failed to clear choices: " + error.getMessage());
+            }
+        });
+    }
+
+    private void endMyTurn() {
+        Log.d(TAG, "Ending my turn");
+
+        // Clear action first
+        clearDuelPending();
+
+        String newTurn = opponentPlayerKey;
+
+        // Small delay to ensure action is cleared
+        new Handler().postDelayed(() -> {
+            // Update current turn in Firebase
+            firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+                @Override
+                public void onDataChange(@NonNull DataSnapshot snapshot) {
+                    snapshot.getRef().child("gameState").child("currentTurn").setValue(newTurn);
+
+                    // Increment round if back to player1
+                    if ("player1".equals(newTurn)) {
+                        Integer currentRound = snapshot.child("gameState").child("currentRound").getValue(Integer.class);
+                        if (currentRound != null) {
+                            snapshot.getRef().child("gameState").child("currentRound").setValue(currentRound + 1);
+                        }
+                    }
+
+                    snapshot.getRef().removeEventListener(this);
+                }
+
+                @Override
+                public void onCancelled(@NonNull DatabaseError error) {
+                    Log.e(TAG, "Failed to end turn: " + error.getMessage());
+                }
+            });
+        }, 300);
     }
 
     private void updateUnitsRemaining(String playerKey, int change) {
@@ -788,17 +879,19 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
     }
 
     private void updateTurnIndicator() {
-        if (isMyTurn) {
-            tvTurnIndicator.setText("YOUR TURN - ATTACK!");
-            tvTurnIndicator.setTextColor(getColor(android.R.color.holo_green_dark));
-            playerGardenSection.setVisibility(View.GONE);
-            enemyGardenSection.setVisibility(View.VISIBLE);
-        } else {
-            tvTurnIndicator.setText("OPPONENT'S TURN");
-            tvTurnIndicator.setTextColor(getColor(android.R.color.holo_red_dark));
-            enemyGardenSection.setVisibility(View.GONE);
-            playerGardenSection.setVisibility(View.VISIBLE);
-        }
+        runOnUiThread(() -> {
+            if (isMyTurn) {
+                tvTurnIndicator.setText("YOUR TURN - ATTACK!");
+                tvTurnIndicator.setTextColor(getColor(android.R.color.holo_green_dark));
+                playerGardenSection.setVisibility(View.GONE);
+                enemyGardenSection.setVisibility(View.VISIBLE);
+            } else {
+                tvTurnIndicator.setText("OPPONENT'S TURN");
+                tvTurnIndicator.setTextColor(getColor(android.R.color.holo_red_dark));
+                enemyGardenSection.setVisibility(View.GONE);
+                playerGardenSection.setVisibility(View.VISIBLE);
+            }
+        });
     }
 
     private void setEnemyGridClickable(boolean clickable) {
@@ -844,48 +937,19 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
     }
 
     private void updateRoundCounter() {
-        tvRoundCounter.setText("Round: " + currentRound + "/" + MAX_ROUNDS);
+        runOnUiThread(() -> {
+            tvRoundCounter.setText("Round: " + currentRound + "/" + MAX_ROUNDS);
+        });
     }
 
     private void updatePowerButtons() {
+        // Implementation similar to BattleActivity
         if (powerManager.canUseGardenHose()) {
             btnGardenHose.setEnabled(true);
             btnGardenHose.setText("💧\nHose");
         } else {
             btnGardenHose.setEnabled(false);
             btnGardenHose.setText("💧\n" + powerManager.getGardenHoseCooldown());
-        }
-
-        if (powerManager.canUseNighttimeRelocation()) {
-            btnNighttimeRelocation.setEnabled(true);
-            btnNighttimeRelocation.setText("🌙\nMove");
-        } else {
-            btnNighttimeRelocation.setEnabled(false);
-            btnNighttimeRelocation.setText("🌙\n" + powerManager.getNighttimeRelocationCooldown());
-        }
-
-        if (powerManager.canUseTier2Power()) {
-            btnTier2Power.setEnabled(true);
-            switch (selectedPower) {
-                case "spy_drone":
-                    btnTier2Power.setText("🐝\nSpy");
-                    break;
-                case "fence_shield":
-                    btnTier2Power.setText("🛡️\nFence");
-                    break;
-                case "fertilizer":
-                    btnTier2Power.setText("🌱\nHeal");
-                    break;
-            }
-        } else {
-            btnTier2Power.setEnabled(false);
-            String icon = "";
-            switch (selectedPower) {
-                case "spy_drone": icon = "🐝"; break;
-                case "fence_shield": icon = "🛡️"; break;
-                case "fertilizer": icon = "🌱"; break;
-            }
-            btnTier2Power.setText(icon + "\n" + powerManager.getTier2PowerCooldown());
         }
     }
 
@@ -922,6 +986,172 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
             default:
                 return R.drawable.sunflower_icon;
         }
+    }
+
+    // ✅ Helper method to find unit at position
+    private SetupActivity.UnitPosition findUnitAtPosition(int row, int col) {
+        for (SetupActivity.UnitPosition unit : playerUnits) {
+            if (unit.row == row && unit.col == col && unit.health > 0) {
+                return unit;
+            }
+        }
+        return null;
+    }
+
+    // ✅ Power handlers
+    private void onPlayerCellClickedForPower(int row, int col) {
+        if (!isSelectingUnitForPower) return;
+
+        SetupActivity.UnitPosition unit = findUnitAtPosition(row, col);
+
+        if (unit == null) {
+            Toast.makeText(this, "No unit here!", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        switch (activePowerMode) {
+            case "move":
+                handleNighttimeRelocation(unit);
+                break;
+            case "fence":
+                handleFenceShield(unit);
+                break;
+            case "fertilizer":
+                handleFertilizer(unit);
+                break;
+        }
+    }
+
+    private void onEnemyCellClickedForPower(int row, int col) {
+        if (!isSelectingUnitForPower || !activePowerMode.equals("spy")) return;
+        revealAreaWithSpyDrone(row, col);
+    }
+
+    private void handleNighttimeRelocation(SetupActivity.UnitPosition unit) {
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("🌙 Move " + unit.type)
+                .setMessage("Choose direction:")
+                .setPositiveButton("⬆️ Up", (dialog, which) -> moveUnit(unit, -1, 0))
+                .setNeutralButton("⬇️ Down", (dialog, which) -> moveUnit(unit, 1, 0))
+                .setNegativeButton("Cancel", (dialog, which) -> cancelPowerMode())
+                .show();
+
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setMessage("Or:")
+                .setPositiveButton("⬅️ Left", (dialog, which) -> moveUnit(unit, 0, -1))
+                .setNeutralButton("➡️ Right", (dialog, which) -> moveUnit(unit, 0, 1))
+                .setNegativeButton("Cancel", (dialog, which) -> cancelPowerMode())
+                .show();
+    }
+
+    private void moveUnit(SetupActivity.UnitPosition unit, int rowOffset, int colOffset) {
+        int newRow = unit.row + rowOffset;
+        int newCol = unit.col + colOffset;
+
+        if (newRow < 0 || newRow >= 8 || newCol < 0 || newCol >= 8) {
+            Toast.makeText(this, "Can't move outside grid!", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (findUnitAtPosition(newRow, newCol) != null) {
+            Toast.makeText(this, "Cell is occupied!", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        ImageView oldCell = playerCells[unit.row][unit.col];
+        oldCell.setImageDrawable(null);
+        oldCell.setTag(null);
+
+        unit.row = newRow;
+        unit.col = newCol;
+
+        ImageView newCell = playerCells[newRow][newCol];
+        newCell.setImageResource(getUnitIcon(unit.type));
+        newCell.setTag(unit);
+        newCell.setScaleX(0.3f);
+        newCell.setScaleY(0.3f);
+        newCell.animate().scaleX(1f).scaleY(1f).setDuration(400).start();
+
+        powerManager.useNighttimeRelocation();
+        cancelPowerMode();
+        updatePowerButtons();
+
+        Toast.makeText(this, "🌙 Unit moved!", Toast.LENGTH_SHORT).show();
+    }
+
+    private void handleFenceShield(SetupActivity.UnitPosition unit) {
+        powerManager.setFenceProtectedUnit(unit);
+        powerManager.useTier2Power();
+
+        ImageView cell = playerCells[unit.row][unit.col];
+        cell.setBackgroundColor(Color.parseColor("#4DB6AC"));
+
+        cancelPowerMode();
+        updatePowerButtons();
+
+        Toast.makeText(this, "🛡️ " + unit.type + " is protected!", Toast.LENGTH_LONG).show();
+    }
+
+    private void handleFertilizer(SetupActivity.UnitPosition unit) {
+        if (unit.health >= 2) {
+            Toast.makeText(this, "Unit is at full health!", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        unit.health = 2;
+
+        ImageView cell = playerCells[unit.row][unit.col];
+        cell.setBackgroundColor(Color.parseColor("#8FBC8F"));
+        cell.animate().scaleX(1.2f).scaleY(1.2f).setDuration(200)
+                .withEndAction(() -> cell.animate().scaleX(1f).scaleY(1f).setDuration(200).start())
+                .start();
+
+        powerManager.useTier2Power();
+        cancelPowerMode();
+        updatePowerButtons();
+
+        Toast.makeText(this, "🌱 " + unit.type + " healed!", Toast.LENGTH_LONG).show();
+    }
+
+    private void revealAreaWithSpyDrone(int centerRow, int centerCol) {
+        int revealed = 0;
+
+        for (int row = centerRow - 1; row <= centerRow + 1; row++) {
+            for (int col = centerCol - 1; col <= centerCol + 1; col++) {
+                if (row >= 0 && row < 8 && col >= 0 && col < 8 && !enemyRevealedCells[row][col]) {
+                    enemyRevealedCells[row][col] = true;
+                    ImageView cell = enemyCells[row][col];
+                    cell.setBackgroundColor(Color.parseColor("#C5E1A5"));
+                    cell.setAlpha(1f);
+                    revealed++;
+                }
+            }
+        }
+
+        powerManager.useTier2Power();
+        cancelPowerMode();
+        updatePowerButtons();
+
+        Toast.makeText(this, "🐝 Revealed " + revealed + " cells!", Toast.LENGTH_LONG).show();
+    }
+
+    private void cancelPowerMode() {
+        isSelectingUnitForPower = false;
+        activePowerMode = null;
+        updateTurnIndicator();
+    }
+
+    private void showMissOnEnemyGrid(int row, int col) {
+        runOnUiThread(() -> {
+            ImageView cell = enemyCells[row][col];
+            enemyRevealedCells[row][col] = true;
+
+            cell.setBackgroundColor(Color.parseColor("#2196F3")); // Blue
+            cell.setImageResource(R.drawable.splash_icon);
+            cell.setAlpha(1f);
+
+            Toast.makeText(this, "Miss! Empty cell.", Toast.LENGTH_SHORT).show();
+        });
     }
 
     @Override

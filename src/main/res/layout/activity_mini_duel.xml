@@ -5,17 +5,19 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#DD000000"
-    android:clickable="true">
+    android:clickable="true"
+    android:padding="16dp">
 
     <!-- Title -->
     <TextView
         android:id="@+id/tvTitle"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="⚔️ MINI DUEL!"
         android:textSize="36sp"
         android:textStyle="bold"
         android:textColor="#FFD700"
+        android:gravity="center"
         android:shadowColor="#000000"
         android:shadowDx="2"
         android:shadowDy="2"
@@ -23,7 +25,8 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="48dp" />
+        app:layout_constraintWidth_percent="0.95"
+        android:layout_marginTop="32dp" />
 
     <!-- Unit Image -->
     <ImageView
@@ -35,17 +38,18 @@
         app:layout_constraintTop_toBottomOf="@id/tvTitle"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="32dp" />
+        android:layout_marginTop="24dp" />
 
     <!-- Countdown Text -->
     <TextView
         android:id="@+id/tvCountdown"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="3"
         android:textSize="64sp"
         android:textStyle="bold"
         android:textColor="#FFD700"
+        android:gravity="center"
         android:shadowColor="#000000"
         android:shadowDx="3"
         android:shadowDy="3"
@@ -53,108 +57,121 @@
         app:layout_constraintTop_toBottomOf="@id/unitImage"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="32dp" />
+        app:layout_constraintWidth_percent="0.9"
+        android:layout_marginTop="24dp" />
 
     <!-- Instruction -->
     <TextView
         android:id="@+id/tvInstruction"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="Choose your number!"
         android:textSize="18sp"
         android:textColor="#FFFFFF"
+        android:gravity="center"
         android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@id/tvCountdown"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintWidth_percent="0.9"
         android:layout_marginTop="16dp" />
 
     <!-- Number Buttons -->
     <LinearLayout
         android:id="@+id/numberButtonsLayout"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
+        android:gravity="center"
         android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@id/tvInstruction"
+        app:layout_constraintBottom_toTopOf="@id/tvResult"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toTopOf="@id/tvResult"
+        app:layout_constraintWidth_percent="0.95"
         android:layout_marginTop="24dp">
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnNumber1"
-            android:layout_width="72dp"
+            android:layout_width="0dp"
             android:layout_height="72dp"
+            android:layout_weight="1"
             android:text="1"
             android:textSize="28sp"
             android:textStyle="bold"
             app:cornerRadius="36dp"
             app:backgroundTint="#2196F3"
-            android:layout_margin="8dp" />
+            android:layout_margin="4dp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnNumber2"
-            android:layout_width="72dp"
+            android:layout_width="0dp"
             android:layout_height="72dp"
+            android:layout_weight="1"
             android:text="2"
             android:textSize="28sp"
             android:textStyle="bold"
             app:cornerRadius="36dp"
             app:backgroundTint="#4CAF50"
-            android:layout_margin="8dp" />
+            android:layout_margin="4dp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnNumber3"
-            android:layout_width="72dp"
+            android:layout_width="0dp"
             android:layout_height="72dp"
+            android:layout_weight="1"
             android:text="3"
             android:textSize="28sp"
             android:textStyle="bold"
             app:cornerRadius="36dp"
             app:backgroundTint="#FF9800"
-            android:layout_margin="8dp" />
+            android:layout_margin="4dp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnNumber4"
-            android:layout_width="72dp"
+            android:layout_width="0dp"
             android:layout_height="72dp"
+            android:layout_weight="1"
             android:text="4"
             android:textSize="28sp"
             android:textStyle="bold"
             app:cornerRadius="36dp"
             app:backgroundTint="#F44336"
-            android:layout_margin="8dp" />
+            android:layout_margin="4dp" />
 
     </LinearLayout>
 
     <!-- Result Text -->
     <TextView
         android:id="@+id/tvResult"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="💥 DIRECT HIT!"
-        android:textSize="32sp"
+        android:textSize="28sp"
         android:textStyle="bold"
         android:textColor="#4CAF50"
+        android:gravity="center"
         android:visibility="gone"
         app:layout_constraintBottom_toTopOf="@id/tvChoices"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintWidth_percent="0.9"
         android:layout_marginBottom="16dp" />
 
     <!-- Show Choices -->
     <TextView
         android:id="@+id/tvChoices"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="You: 3 | Enemy: 2"
         android:textSize="18sp"
         android:textColor="#FFFFFF"
+        android:gravity="center"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginBottom="64dp" />
+        app:layout_constraintWidth_percent="0.9"
+        android:layout_marginBottom="48dp" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

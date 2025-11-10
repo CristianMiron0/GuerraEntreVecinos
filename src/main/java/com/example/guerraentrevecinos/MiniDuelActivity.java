@@ -259,12 +259,16 @@ public class MiniDuelActivity extends AppCompatActivity {
         }
     }
 
+    // ✅ ALSO UPDATE: selectNumber() to handle Garden Hose for BOTH players
     private void selectNumber(int number) {
         if (playerChoice != -1) return;
 
-        Log.d(TAG, "Player selected number: " + number);
+        Log.d(TAG, "Player selected number: " + number +
+                " (GardenHose: " + isGardenHoseActive +
+                ", IsAttacking: " + isPlayerAttacking + ")");
 
-        if (isGardenHoseActive && firstChoice == -1) {
+        // ✅ Garden Hose logic - ONLY for attacker
+        if (isGardenHoseActive && isPlayerAttacking && firstChoice == -1) {
             firstChoice = number;
             highlightButton(number);
             Toast.makeText(this, "First choice: " + number + ". Pick a second number!",
@@ -272,24 +276,27 @@ public class MiniDuelActivity extends AppCompatActivity {
             return;
         }
 
-        if (isGardenHoseActive && firstChoice != -1) {
+        if (isGardenHoseActive && isPlayerAttacking && firstChoice != -1) {
             if (number == firstChoice) {
                 Toast.makeText(this, "Pick a different number!", Toast.LENGTH_SHORT).show();
                 return;
             }
             secondChoice = number;
-            playerChoice = firstChoice;
+            playerChoice = firstChoice; // Store first choice as main
         } else {
+            // Normal selection (defender or no Garden Hose)
             playerChoice = number;
         }
 
         setButtonsEnabled(false);
 
         if (isMultiplayer) {
-            // ✅ Set waiting flag BEFORE sending
             waitingForOpponent = true;
 
-            Log.d(TAG, "Multiplayer - Player chose: " + playerChoice + " (Attacking: " + isPlayerAttacking + ")");
+            Log.d(TAG, "Multiplayer - Player chose: " + playerChoice +
+                    (isGardenHoseActive && isPlayerAttacking ?
+                            " & " + secondChoice : "") +
+                    " (Attacking: " + isPlayerAttacking + ")");
 
             binding.tvCountdown.setText("LOCKED IN!");
             binding.tvInstruction.setText("⏳ Waiting for opponent...");
@@ -298,30 +305,54 @@ public class MiniDuelActivity extends AppCompatActivity {
 
             Toast.makeText(this, "✅ Choice locked! Waiting for opponent...", Toast.LENGTH_LONG).show();
 
-            // ✅ Save choice DIRECTLY to Firebase from here
             saveChoiceToFirebase();
 
         } else {
             // Solo mode
             enemyChoice = new Random().nextInt(4) + 1;
+
+            // ✅ If Garden Hose active and we're defending, enemy gets 2 choices
+            if (isGardenHoseActive && !isPlayerAttacking) {
+                firstChoice = enemyChoice;
+                do {
+                    secondChoice = new Random().nextInt(4) + 1;
+                } while (secondChoice == firstChoice);
+
+                Log.d(TAG, "Solo - AI using Garden Hose: " + firstChoice + " & " + secondChoice);
+            }
+
             new Handler().postDelayed(this::revealResult, 800);
         }
     }
 
-    // ✅ NEW: Save choice directly to Firebase
+    // ✅ FIX: Save Garden Hose choices properly to Firebase
     private void saveChoiceToFirebase() {
         String choiceKey = isPlayerAttacking ? "attackerChoice" : "defenderChoice";
 
-        Log.d(TAG, "Saving choice to Firebase: " + choiceKey + " = " + playerChoice);
+        Log.d(TAG, "=== SAVING DUEL CHOICE ===");
+        Log.d(TAG, "IsAttacker: " + isPlayerAttacking + ", Choice: " + playerChoice);
+
+        if (isGardenHoseActive && isPlayerAttacking) {
+            Log.d(TAG, "Garden Hose - Second Choice: " + secondChoice);
+        }
 
         firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
+                // Save main choice
                 snapshot.getRef().child("lastAction").child(choiceKey).setValue(playerChoice)
                         .addOnSuccessListener(aVoid -> {
                             Log.d(TAG, "✅ " + choiceKey + " saved: " + playerChoice);
 
-                            // Immediately check if both choices are now available
+                            // ✅ If Garden Hose active and attacking, save second choice too
+                            if (isGardenHoseActive && isPlayerAttacking) {
+                                snapshot.getRef().child("lastAction").child("attackerSecondChoice")
+                                        .setValue(secondChoice)
+                                        .addOnSuccessListener(a -> {
+                                            Log.d(TAG, "✅ attackerSecondChoice saved: " + secondChoice);
+                                        });
+                            }
+
                             new Handler().postDelayed(() -> checkBothChoices(), 500);
                         })
                         .addOnFailureListener(e -> {
@@ -343,7 +374,7 @@ public class MiniDuelActivity extends AppCompatActivity {
         });
     }
 
-    // ✅ Check if both choices exist
+    // ✅ FIX: Read Garden Hose second choice from Firebase
     private void checkBothChoices() {
         Log.d(TAG, "Checking for both choices...");
 
@@ -354,18 +385,29 @@ public class MiniDuelActivity extends AppCompatActivity {
                 Integer attackerChoice = lastAction.child("attackerChoice").getValue(Integer.class);
                 Integer defenderChoice = lastAction.child("defenderChoice").getValue(Integer.class);
 
+                // ✅ NEW: Check for second choice if Garden Hose active
+                Integer attackerSecond = lastAction.child("attackerSecondChoice").getValue(Integer.class);
+
                 Log.d(TAG, "Check result - Attacker: " + attackerChoice +
+                        (attackerSecond != null ? " & " + attackerSecond : "") +
                         ", Defender: " + defenderChoice +
                         ", MyChoice: " + playerChoice);
 
                 if (attackerChoice != null && defenderChoice != null) {
                     Log.d(TAG, "✅ BOTH CHOICES FOUND!");
 
-                    // Set enemy choice
+                    // Set enemy choice based on role
                     if (isPlayerAttacking) {
                         enemyChoice = defenderChoice;
                     } else {
                         enemyChoice = attackerChoice;
+
+                        // ✅ If defending against Garden Hose, get both attacker choices
+                        if (isGardenHoseActive && attackerSecond != null) {
+                            firstChoice = attackerChoice;
+                            secondChoice = attackerSecond;
+                            Log.d(TAG, "Defending against Garden Hose: " + firstChoice + " & " + secondChoice);
+                        }
                     }
 
                     waitingForOpponent = false;
@@ -403,21 +445,38 @@ public class MiniDuelActivity extends AppCompatActivity {
         }
     }
 
+    // ✅ FIX for Garden Hose in MiniDuelActivity
+    // Replace the revealResult() method in MiniDuelActivity.java:
+
     private void revealResult() {
         boolean wasHit;
 
+        // ✅ FIXED GARDEN HOSE LOGIC
         if (isGardenHoseActive) {
+            // Garden Hose: Check if defender's choice matches EITHER of attacker's 2 choices
             wasHit = (firstChoice == enemyChoice || secondChoice == enemyChoice);
+
+            Log.d(TAG, "Garden Hose Active - First: " + firstChoice +
+                    ", Second: " + secondChoice +
+                    ", Defender: " + enemyChoice +
+                    ", Result: " + (wasHit ? "HIT" : "MISS"));
         } else {
+            // Normal: Numbers must match exactly
             wasHit = (playerChoice == enemyChoice);
+
+            Log.d(TAG, "Normal duel - Player: " + playerChoice +
+                    ", Enemy: " + enemyChoice +
+                    ", Result: " + (wasHit ? "HIT" : "MISS"));
         }
 
-        Log.d(TAG, "Revealing result - wasHit: " + wasHit + ", player: " + playerChoice + ", enemy: " + enemyChoice);
+        Log.d(TAG, "Revealing result - wasHit: " + wasHit +
+                ", isPlayerAttacking: " + isPlayerAttacking);
 
         binding.tvCountdown.animate().alpha(0f).setDuration(200).start();
         binding.tvInstruction.animate().alpha(0f).setDuration(200).start();
 
         new Handler().postDelayed(() -> {
+            // Display choices
             if (isPlayerAttacking) {
                 if (isGardenHoseActive) {
                     binding.tvChoices.setText("You: " + firstChoice + " & " + secondChoice +
@@ -426,12 +485,21 @@ public class MiniDuelActivity extends AppCompatActivity {
                     binding.tvChoices.setText("You: " + playerChoice + " | Enemy Defense: " + enemyChoice);
                 }
             } else {
-                binding.tvChoices.setText("Your Defense: " + playerChoice + " | Enemy Attack: " + enemyChoice);
+                if (isGardenHoseActive) {
+                    // ✅ FIXED: Show defender that attacker has 2 choices
+                    binding.tvChoices.setText("Your Defense: " + playerChoice +
+                            " | Enemy Attack: " + firstChoice + " & " + secondChoice);
+                } else {
+                    binding.tvChoices.setText("Your Defense: " + playerChoice +
+                            " | Enemy Attack: " + enemyChoice);
+                }
             }
+
             binding.tvChoices.setVisibility(View.VISIBLE);
             binding.tvChoices.setAlpha(0f);
             binding.tvChoices.animate().alpha(1f).setDuration(300).start();
 
+            // Display result
             if (wasHit) {
                 if (isPlayerAttacking) {
                     binding.tvResult.setText("💥 DIRECT HIT!\nUnit DESTROYED!");

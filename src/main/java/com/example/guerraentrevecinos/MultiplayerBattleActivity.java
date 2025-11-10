@@ -364,8 +364,13 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                             Integer targetRow = lastActionSnapshot.child("targetRow").getValue(Integer.class);
                             Integer targetCol = lastActionSnapshot.child("targetCol").getValue(Integer.class);
 
+                            // ✅ NEW: Check if opponent is using Garden Hose
+                            Boolean opponentGardenHose = lastActionSnapshot.child("gardenHoseActive").getValue(Boolean.class);
+                            boolean opponentUsingGardenHose = (opponentGardenHose != null && opponentGardenHose);
+
                             if (targetRow != null && targetCol != null) {
                                 Log.d(TAG, "I'M DEFENDING! Opponent attacked at (" + targetRow + "," + targetCol + ")");
+                                Log.d(TAG, "Opponent using Garden Hose: " + opponentUsingGardenHose);
 
                                 lastProcessedActionTimestamp = timestamp;
 
@@ -385,7 +390,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
                                     showRockFalling(targetRow, targetCol);
 
-                                    // Update action to indicate unit was found and include unit type
+                                    // Update action with unit info
                                     FirebaseGameRoom.LastActionData responseAction = new FirebaseGameRoom.LastActionData();
                                     responseAction.type = "duel_ready";
                                     responseAction.player = myPlayerKey;
@@ -403,10 +408,24 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                                     final int finalCol = targetCol;
                                     final String finalUnitType = hitUnit.type;
 
+                                    // ✅ IMPORTANT: Pass opponent's Garden Hose status to defender's duel
+                                    final boolean finalOpponentGardenHose = opponentUsingGardenHose;
+
                                     // Launch defender mini-duel after animation
                                     new Handler().postDelayed(() -> {
                                         Log.d(TAG, "Launching DEFENDER mini-duel NOW");
-                                        launchMiniDuel(finalRow, finalCol, finalUnitType, false);
+
+                                        // Launch with opponent's Garden Hose status
+                                        Intent intent = new Intent(this, MiniDuelActivity.class);
+                                        intent.putExtra(MiniDuelActivity.EXTRA_UNIT_TYPE, finalUnitType);
+                                        intent.putExtra(MiniDuelActivity.EXTRA_TARGET_ROW, finalRow);
+                                        intent.putExtra(MiniDuelActivity.EXTRA_TARGET_COL, finalCol);
+                                        intent.putExtra("IS_PLAYER_ATTACKING", false);
+                                        intent.putExtra("GARDEN_HOSE_ACTIVE", finalOpponentGardenHose); // ✅ This is the key fix!
+                                        intent.putExtra(MiniDuelActivity.EXTRA_IS_MULTIPLAYER, true);
+                                        intent.putExtra(MiniDuelActivity.EXTRA_ROOM_CODE, roomCode);
+
+                                        startActivityForResult(intent, REQUEST_CODE_MINI_DUEL);
                                     }, 1500);
 
                                 } else {
@@ -544,6 +563,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         firebaseManager.listenToRoom(roomCode, roomListener);
     }
 
+    // ✅ FIX: Add Garden Hose data to Firebase action
     private void onEnemyCellClicked(int row, int col) {
         Log.d(TAG, "Enemy cell clicked: (" + row + "," + col + ")");
 
@@ -564,32 +584,48 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
         hasAttackedThisTurn = true;
         waitingForDuelResult = true;
-        iAmAttackerInCurrentDuel = true; // Mark that I'm attacking
+        iAmAttackerInCurrentDuel = true;
         setEnemyGridClickable(false);
 
         pendingAttackRow = row;
         pendingAttackCol = col;
 
-        // Send attack action to Firebase - defender will check if there's a unit
+        // ✅ NEW: Store Garden Hose state for this attack
+        boolean usingGardenHose = powerManager.isGardenHoseActive();
+
+        // Send attack action to Firebase
         FirebaseGameRoom.LastActionData action = new FirebaseGameRoom.LastActionData();
         action.type = "attack";
         action.player = myPlayerKey;
         action.targetRow = row;
         action.targetCol = col;
-        action.wasHit = false; // Will be determined by defender
+        action.wasHit = false;
         action.duelPending = true;
         action.timestamp = System.currentTimeMillis();
 
         firebaseManager.sendAction(roomCode, action);
 
-        Log.d(TAG, "Attack sent to Firebase: (" + row + "," + col + ") - waiting for defender response");
+        // ✅ NEW: Save Garden Hose flag to Firebase if active
+        if (usingGardenHose) {
+            firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+                @Override
+                public void onDataChange(@NonNull DataSnapshot snapshot) {
+                    snapshot.getRef().child("lastAction").child("gardenHoseActive").setValue(true);
+                    snapshot.getRef().removeEventListener(this);
+                }
 
-        // Show attacking animation
+                @Override
+                public void onCancelled(@NonNull DatabaseError error) {}
+            });
+        }
+
+        Log.d(TAG, "Attack sent to Firebase: (" + row + "," + col + ") - GardenHose: " + usingGardenHose);
+
         Toast.makeText(this, "Attacking (" + row + "," + col + ")...", Toast.LENGTH_SHORT).show();
-
-        // Don't launch mini-duel yet - wait for defender to respond
     }
 
+
+    // ✅ FIX: Pass Garden Hose status to MiniDuel
     private void launchMiniDuel(int row, int col, String unitType, boolean isPlayerAttacking) {
         Log.d(TAG, "Launching mini-duel. Attacking: " + isPlayerAttacking + ", Unit: " + unitType);
 
@@ -598,23 +634,35 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         intent.putExtra(MiniDuelActivity.EXTRA_TARGET_ROW, row);
         intent.putExtra(MiniDuelActivity.EXTRA_TARGET_COL, col);
         intent.putExtra("IS_PLAYER_ATTACKING", isPlayerAttacking);
-        intent.putExtra("GARDEN_HOSE_ACTIVE", powerManager.isGardenHoseActive());
+
+        // ✅ FIXED: Check if Garden Hose is active for THIS duel
+        boolean gardenHoseActive = powerManager.isGardenHoseActive();
+        intent.putExtra("GARDEN_HOSE_ACTIVE", gardenHoseActive);
+
         intent.putExtra(MiniDuelActivity.EXTRA_IS_MULTIPLAYER, true);
-        intent.putExtra(MiniDuelActivity.EXTRA_ROOM_CODE, roomCode); // ✅ Pass room code
+        intent.putExtra(MiniDuelActivity.EXTRA_ROOM_CODE, roomCode);
+
         startActivityForResult(intent, REQUEST_CODE_MINI_DUEL);
     }
 
+    // ✅ FIX: Deactivate Garden Hose after MiniDuel result
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
         if (requestCode == REQUEST_CODE_MINI_DUEL && resultCode == RESULT_OK) {
-            // ✅ Only handle final result - MiniDuel handles saving choices itself
             boolean wasHit = data.getBooleanExtra(MiniDuelActivity.EXTRA_WAS_HIT, false);
             int row = pendingAttackRow;
             int col = pendingAttackCol;
 
             Log.d(TAG, "Received FINAL result from mini-duel - wasHit: " + wasHit);
+
+            // ✅ FIXED: Deactivate Garden Hose after use
+            if (powerManager.isGardenHoseActive()) {
+                powerManager.deactivateGardenHose();
+                updatePowerButtons();
+                Toast.makeText(this, "Garden Hose used!", Toast.LENGTH_SHORT).show();
+            }
 
             if (iAmAttackerInCurrentDuel) {
                 handleMyAttackResult(row, col, wasHit);
@@ -943,13 +991,61 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
     }
 
     private void updatePowerButtons() {
-        // Implementation similar to BattleActivity
-        if (powerManager.canUseGardenHose()) {
+        if (!isMyTurn || waitingForDuelResult) {
+            // Disable all during opponent's turn or while waiting
+            btnGardenHose.setEnabled(false);
+            btnNighttimeRelocation.setEnabled(false);
+            btnTier2Power.setEnabled(false);
+            return;
+        }
+
+        // Garden Hose - ✅ FIXED: Check if active OR on cooldown
+        if (powerManager.isGardenHoseActive()) {
+            btnGardenHose.setEnabled(false);
+            btnGardenHose.setText("💧\nActive");
+        } else if (powerManager.canUseGardenHose()) {
             btnGardenHose.setEnabled(true);
             btnGardenHose.setText("💧\nHose");
         } else {
             btnGardenHose.setEnabled(false);
-            btnGardenHose.setText("💧\n" + powerManager.getGardenHoseCooldown());
+            int cooldown = powerManager.getGardenHoseCooldown();
+            btnGardenHose.setText("💧\n" + cooldown);
+        }
+
+        // Nighttime Relocation
+        if (powerManager.canUseNighttimeRelocation()) {
+            btnNighttimeRelocation.setEnabled(true);
+            btnNighttimeRelocation.setText("🌙\nMove");
+        } else {
+            btnNighttimeRelocation.setEnabled(false);
+            int cooldown = powerManager.getNighttimeRelocationCooldown();
+            btnNighttimeRelocation.setText("🌙\n" + cooldown);
+        }
+
+        // Tier 2 Power
+        if (powerManager.canUseTier2Power()) {
+            btnTier2Power.setEnabled(true);
+            switch (selectedPower) {
+                case "spy_drone":
+                    btnTier2Power.setText("🐝\nSpy");
+                    break;
+                case "fence_shield":
+                    btnTier2Power.setText("🛡️\nFence");
+                    break;
+                case "fertilizer":
+                    btnTier2Power.setText("🌱\nHeal");
+                    break;
+            }
+        } else {
+            btnTier2Power.setEnabled(false);
+            String icon = "";
+            switch (selectedPower) {
+                case "spy_drone": icon = "🐝"; break;
+                case "fence_shield": icon = "🛡️"; break;
+                case "fertilizer": icon = "🌱"; break;
+            }
+            int cooldown = powerManager.getTier2PowerCooldown();
+            btnTier2Power.setText(cooldown > 0 ? icon + "\n" + cooldown : icon + "\nReady");
         }
     }
 

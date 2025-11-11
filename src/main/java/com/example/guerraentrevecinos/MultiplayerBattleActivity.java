@@ -364,7 +364,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                             Integer targetRow = lastActionSnapshot.child("targetRow").getValue(Integer.class);
                             Integer targetCol = lastActionSnapshot.child("targetCol").getValue(Integer.class);
 
-                            // ✅ NEW: Check if opponent is using Garden Hose
+                            // ✅ Check if opponent is using Garden Hose
                             Boolean opponentGardenHose = lastActionSnapshot.child("gardenHoseActive").getValue(Boolean.class);
                             boolean opponentUsingGardenHose = (opponentGardenHose != null && opponentGardenHose);
 
@@ -416,7 +416,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                                         Log.d(TAG, "Launching DEFENDER mini-duel NOW");
 
                                         // Launch with opponent's Garden Hose status
-                                        Intent intent = new Intent(this, MiniDuelActivity.class);
+                                        Intent intent = new Intent(MultiplayerBattleActivity.this, MiniDuelActivity.class);
                                         intent.putExtra(MiniDuelActivity.EXTRA_UNIT_TYPE, finalUnitType);
                                         intent.putExtra(MiniDuelActivity.EXTRA_TARGET_ROW, finalRow);
                                         intent.putExtra(MiniDuelActivity.EXTRA_TARGET_COL, finalCol);

@@ -378,54 +378,56 @@ public class MiniDuelActivity extends AppCompatActivity {
     private void checkBothChoices() {
         Log.d(TAG, "Checking for both choices...");
 
-        firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                DataSnapshot lastAction = snapshot.child("lastAction");
-                Integer attackerChoice = lastAction.child("attackerChoice").getValue(Integer.class);
-                Integer defenderChoice = lastAction.child("defenderChoice").getValue(Integer.class);
+        new Handler().postDelayed(() -> {
+            firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+                @Override
+                public void onDataChange(@NonNull DataSnapshot snapshot) {
+                    DataSnapshot lastAction = snapshot.child("lastAction");
+                    Integer attackerChoice = lastAction.child("attackerChoice").getValue(Integer.class);
+                    Integer defenderChoice = lastAction.child("defenderChoice").getValue(Integer.class);
 
-                // ✅ NEW: Check for second choice if Garden Hose active
-                Integer attackerSecond = lastAction.child("attackerSecondChoice").getValue(Integer.class);
+                    // ✅ NEW: Check for second choice if Garden Hose active
+                    Integer attackerSecond = lastAction.child("attackerSecondChoice").getValue(Integer.class);
 
-                Log.d(TAG, "Check result - Attacker: " + attackerChoice +
-                        (attackerSecond != null ? " & " + attackerSecond : "") +
-                        ", Defender: " + defenderChoice +
-                        ", MyChoice: " + playerChoice);
+                    Log.d(TAG, "Check result - Attacker: " + attackerChoice +
+                            (attackerSecond != null ? " & " + attackerSecond : "") +
+                            ", Defender: " + defenderChoice +
+                            ", MyChoice: " + playerChoice);
 
-                if (attackerChoice != null && defenderChoice != null) {
-                    Log.d(TAG, "✅ BOTH CHOICES FOUND!");
+                    if (attackerChoice != null && defenderChoice != null) {
+                        Log.d(TAG, "✅ BOTH CHOICES FOUND!");
 
-                    // Set enemy choice based on role
-                    if (isPlayerAttacking) {
-                        enemyChoice = defenderChoice;
-                    } else {
-                        enemyChoice = attackerChoice;
+                        // Set enemy choice based on role
+                        if (isPlayerAttacking) {
+                            enemyChoice = defenderChoice;
+                        } else {
+                            enemyChoice = attackerChoice;
 
-                        // ✅ If defending against Garden Hose, get both attacker choices
-                        if (isGardenHoseActive && attackerSecond != null) {
-                            firstChoice = attackerChoice;
-                            secondChoice = attackerSecond;
-                            Log.d(TAG, "Defending against Garden Hose: " + firstChoice + " & " + secondChoice);
+                            // ✅ If defending against Garden Hose, get both attacker choices
+                            if (isGardenHoseActive && attackerSecond != null) {
+                                firstChoice = attackerChoice;
+                                secondChoice = attackerSecond;
+                                Log.d(TAG, "Defending against Garden Hose: " + firstChoice + " & " + secondChoice);
+                            }
                         }
+
+                        waitingForOpponent = false;
+
+                        runOnUiThread(() -> {
+                            Log.d(TAG, "Revealing result now!");
+                            revealResult();
+                        });
                     }
 
-                    waitingForOpponent = false;
-
-                    runOnUiThread(() -> {
-                        Log.d(TAG, "Revealing result now!");
-                        revealResult();
-                    });
+                    snapshot.getRef().removeEventListener(this);
                 }
 
-                snapshot.getRef().removeEventListener(this);
-            }
-
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                Log.e(TAG, "Check error: " + error.getMessage());
-            }
-        });
+                @Override
+                public void onCancelled(@NonNull DatabaseError error) {
+                    Log.e(TAG, "Check error: " + error.getMessage());
+                }
+            });
+        }, 300); // 300ms delay
     }
 
     private void highlightButton(int number) {
@@ -451,7 +453,7 @@ public class MiniDuelActivity extends AppCompatActivity {
     private void revealResult() {
         boolean wasHit;
 
-        // ✅ FIXED GARDEN HOSE LOGIC
+        // FIXED GARDEN HOSE LOGIC
         if (isGardenHoseActive) {
             // Garden Hose: Check if defender's choice matches EITHER of attacker's 2 choices
             wasHit = (firstChoice == enemyChoice || secondChoice == enemyChoice);

@@ -318,13 +318,16 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
                 Log.d(TAG, "Received game update");
 
-                // Get game state
+                // ========================================
+                // 1. UPDATE GAME STATE (Turn & Round)
+                // ========================================
                 DataSnapshot gameStateSnapshot = snapshot.child("gameState");
                 String currentTurn = gameStateSnapshot.child("currentTurn").getValue(String.class);
                 Integer round = gameStateSnapshot.child("currentRound").getValue(Integer.class);
 
                 Log.d(TAG, "Current turn: " + currentTurn + ", My turn: " + myPlayerKey + ", Round: " + round);
 
+                // Update round
                 if (round != null && round != currentRound) {
                     currentRound = round;
                     updateRoundCounter();
@@ -343,7 +346,9 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                     Log.d(TAG, "Turn changed. My turn: " + isMyTurn);
                 }
 
-                // Check for pending action
+                // ========================================
+                // 2. CHECK FOR PENDING ACTIONS
+                // ========================================
                 DataSnapshot lastActionSnapshot = snapshot.child("lastAction");
                 if (lastActionSnapshot.exists()) {
                     String actionPlayer = lastActionSnapshot.child("player").getValue(String.class);
@@ -351,12 +356,14 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                     Boolean duelPending = lastActionSnapshot.child("duelPending").getValue(Boolean.class);
                     Long timestamp = lastActionSnapshot.child("timestamp").getValue(Long.class);
 
-                    // Only process new actions (prevent re-processing same action)
+                    // Only process new actions (prevent re-processing)
                     if (timestamp != null && timestamp > lastProcessedActionTimestamp) {
                         Log.d(TAG, "NEW Action - player: " + actionPlayer + ", type: " + actionType +
                                 ", duelPending: " + duelPending + ", timestamp: " + timestamp);
 
-                        // DEFENDER: Opponent attacked me
+                        // ========================================
+                        // 3. DEFENDER: Opponent attacked me
+                        // ========================================
                         if (opponentPlayerKey.equals(actionPlayer) &&
                                 "attack".equals(actionType) &&
                                 duelPending != null && duelPending) {
@@ -364,7 +371,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                             Integer targetRow = lastActionSnapshot.child("targetRow").getValue(Integer.class);
                             Integer targetCol = lastActionSnapshot.child("targetCol").getValue(Integer.class);
 
-                            // ✅ Check if opponent is using Garden Hose
+                            // FIX: Read opponent's Garden Hose status
                             Boolean opponentGardenHose = lastActionSnapshot.child("gardenHoseActive").getValue(Boolean.class);
                             boolean opponentUsingGardenHose = (opponentGardenHose != null && opponentGardenHose);
 
@@ -374,8 +381,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
                                 lastProcessedActionTimestamp = timestamp;
 
-                                // Check if there's actually a unit here
-                                // ✅ FIX: Use final reference for lambda
+                                // Check if there's a unit here
                                 final SetupActivity.UnitPosition hitUnit = findUnitAtPosition(targetRow, targetCol);
 
                                 if (hitUnit != null) {
@@ -383,7 +389,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                                     Log.d(TAG, "HIT! Unit type: " + hitUnit.type + " - Launching DEFENDER duel");
 
                                     waitingForDuelResult = true;
-                                    iAmAttackerInCurrentDuel = false; // Mark that I'm defending
+                                    iAmAttackerInCurrentDuel = false;
                                     pendingAttackRow = targetRow;
                                     pendingAttackCol = targetCol;
                                     pendingUnitType = hitUnit.type;
@@ -403,25 +409,22 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
                                     firebaseManager.sendAction(roomCode, responseAction);
 
-                                    // ✅ FIX: Use final variables in lambda
+                                    // Store values for lambda
                                     final int finalRow = targetRow;
                                     final int finalCol = targetCol;
                                     final String finalUnitType = hitUnit.type;
-
-                                    // ✅ IMPORTANT: Pass opponent's Garden Hose status to defender's duel
                                     final boolean finalOpponentGardenHose = opponentUsingGardenHose;
 
                                     // Launch defender mini-duel after animation
                                     new Handler().postDelayed(() -> {
                                         Log.d(TAG, "Launching DEFENDER mini-duel NOW");
 
-                                        // Launch with opponent's Garden Hose status
                                         Intent intent = new Intent(MultiplayerBattleActivity.this, MiniDuelActivity.class);
                                         intent.putExtra(MiniDuelActivity.EXTRA_UNIT_TYPE, finalUnitType);
                                         intent.putExtra(MiniDuelActivity.EXTRA_TARGET_ROW, finalRow);
                                         intent.putExtra(MiniDuelActivity.EXTRA_TARGET_COL, finalCol);
                                         intent.putExtra("IS_PLAYER_ATTACKING", false);
-                                        intent.putExtra("GARDEN_HOSE_ACTIVE", finalOpponentGardenHose); // ✅ This is the key fix!
+                                        intent.putExtra("GARDEN_HOSE_ACTIVE", finalOpponentGardenHose); // ✅ KEY FIX!
                                         intent.putExtra(MiniDuelActivity.EXTRA_IS_MULTIPLAYER, true);
                                         intent.putExtra(MiniDuelActivity.EXTRA_ROOM_CODE, roomCode);
 
@@ -446,9 +449,10 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                             }
                         }
 
-                        // ATTACKER: Received response from defender
+                        // ========================================
+                        // 4. ATTACKER: Received response from defender
+                        // ========================================
                         else if (opponentPlayerKey.equals(actionPlayer) && "duel_ready".equals(actionType)) {
-                            // Defender confirmed there's a unit - launch attacker duel
                             Integer targetRow = lastActionSnapshot.child("targetRow").getValue(Integer.class);
                             Integer targetCol = lastActionSnapshot.child("targetCol").getValue(Integer.class);
                             Boolean wasHit = lastActionSnapshot.child("wasHit").getValue(Boolean.class);
@@ -459,7 +463,6 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
                                 lastProcessedActionTimestamp = timestamp;
 
-                                // ✅ FIX: Use final variables for lambda
                                 final int finalRow = targetRow;
                                 final int finalCol = targetCol;
                                 final String finalUnitType = unitType != null ? unitType : "sunflower";
@@ -472,7 +475,9 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                             }
                         }
 
-                        // ATTACKER: Received miss notification from defender
+                        // ========================================
+                        // 5. ATTACKER: Received miss notification
+                        // ========================================
                         else if (opponentPlayerKey.equals(actionPlayer) && "miss".equals(actionType)) {
                             Integer targetRow = lastActionSnapshot.child("targetRow").getValue(Integer.class);
                             Integer targetCol = lastActionSnapshot.child("targetCol").getValue(Integer.class);
@@ -481,7 +486,6 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
                             lastProcessedActionTimestamp = timestamp;
 
-                            // Show miss
                             if (targetRow != null && targetCol != null) {
                                 final int finalRow = targetRow;
                                 final int finalCol = targetCol;
@@ -490,18 +494,21 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                             }
 
                             waitingForDuelResult = false;
-
-                            // End turn
                             new Handler().postDelayed(() -> endMyTurn(), 1500);
                         }
 
-                        // BOTH PLAYERS: Check if both choices are in
+                        // ========================================
+                        // 6. BOTH PLAYERS: Check if both choices are in
+                        // ========================================
                         if (waitingForDuelResult) {
-                            // Always check for both choices when waiting
                             Integer attackerChoice = lastActionSnapshot.child("attackerChoice").getValue(Integer.class);
                             Integer defenderChoice = lastActionSnapshot.child("defenderChoice").getValue(Integer.class);
 
+                            // NEW: Check for Garden Hose second choice
+                            Integer attackerSecond = lastActionSnapshot.child("attackerSecondChoice").getValue(Integer.class);
+
                             Log.d(TAG, "Checking choices - Attacker: " + attackerChoice +
+                                    (attackerSecond != null ? " & " + attackerSecond : "") +
                                     ", Defender: " + defenderChoice + ", Waiting: " + waitingForDuelResult);
 
                             if (attackerChoice != null && defenderChoice != null) {
@@ -512,8 +519,20 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                                 if (timestamp != null && timestamp > lastProcessedActionTimestamp) {
                                     lastProcessedActionTimestamp = timestamp;
 
-                                    // Calculate result
-                                    boolean wasHit = attackerChoice.equals(defenderChoice);
+                                    // FIX: Calculate result with Garden Hose support
+                                    boolean wasHit;
+
+                                    // Check if attacker used Garden Hose (has second choice)
+                                    if (attackerSecond != null) {
+                                        // Garden Hose: Hit if defender matches EITHER choice
+                                        wasHit = (attackerChoice.equals(defenderChoice) ||
+                                                attackerSecond.equals(defenderChoice));
+                                        Log.d(TAG, "Garden Hose Active - Choices: " + attackerChoice +
+                                                " & " + attackerSecond + " vs Defender: " + defenderChoice);
+                                    } else {
+                                        // Normal: Must match exactly
+                                        wasHit = attackerChoice.equals(defenderChoice);
+                                    }
 
                                     Integer targetRow = lastActionSnapshot.child("targetRow").getValue(Integer.class);
                                     Integer targetCol = lastActionSnapshot.child("targetCol").getValue(Integer.class);
@@ -522,7 +541,6 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                                             (iAmAttackerInCurrentDuel ? "ATTACKER" : "DEFENDER"));
 
                                     if (targetRow != null && targetCol != null) {
-                                        // Use the role we stored when duel started
                                         if (iAmAttackerInCurrentDuel) {
                                             Log.d(TAG, "Processing result as ATTACKER");
                                             handleMyAttackResult(targetRow, targetCol, wasHit);
@@ -536,19 +554,37 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                                 }
                             }
                         }
+
+                        // ========================================
+                        // 7. Listen for opponent power usage
+                        // ========================================
+                        else if (opponentPlayerKey.equals(actionPlayer) && "power_used".equals(actionType)) {
+                            String powerType = lastActionSnapshot.child("powerType").getValue(String.class);
+
+                            if ("spy_drone".equals(powerType)) {
+                                // Opponent used spy drone - no visual effect needed on your side
+                                Log.d(TAG, "Opponent used Spy Drone");
+                            }
+                            // Add other power types as needed
+
+                            lastProcessedActionTimestamp = timestamp;
+                        }
+
                     } else {
                         Log.d(TAG, "Ignoring old/duplicate action with timestamp: " + timestamp);
                     }
                 }
 
-                // Check win condition
+                // ========================================
+                // 8. CHECK WIN CONDITION
+                // ========================================
                 Integer p1Units = gameStateSnapshot.child("player1UnitsRemaining").getValue(Integer.class);
                 Integer p2Units = gameStateSnapshot.child("player2UnitsRemaining").getValue(Integer.class);
 
                 if (p1Units != null && p1Units == 0) {
-                    endGame(!isHost);
+                    endGame(!isHost); // Player 2 wins
                 } else if (p2Units != null && p2Units == 0) {
-                    endGame(isHost);
+                    endGame(isHost); // Player 1 wins
                 }
             }
 
@@ -563,10 +599,12 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         firebaseManager.listenToRoom(roomCode, roomListener);
     }
 
-    // ✅ FIX: Add Garden Hose data to Firebase action
     private void onEnemyCellClicked(int row, int col) {
         Log.d(TAG, "Enemy cell clicked: (" + row + "," + col + ")");
 
+        // ========================================
+        // VALIDATION CHECKS
+        // ========================================
         if (!isMyTurn) {
             Toast.makeText(this, "Wait for your turn!", Toast.LENGTH_SHORT).show();
             return;
@@ -582,6 +620,9 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
             return;
         }
 
+        // ========================================
+        // MARK ATTACK IN PROGRESS
+        // ========================================
         hasAttackedThisTurn = true;
         waitingForDuelResult = true;
         iAmAttackerInCurrentDuel = true;
@@ -590,42 +631,91 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         pendingAttackRow = row;
         pendingAttackCol = col;
 
-        // ✅ NEW: Store Garden Hose state for this attack
-        boolean usingGardenHose = powerManager.isGardenHoseActive();
+        // Check Garden Hose status BEFORE sending to Firebase
+        final boolean usingGardenHose = powerManager.isGardenHoseActive();
 
-        // Send attack action to Firebase
+        Log.d(TAG, "Sending attack - Garden Hose active: " + usingGardenHose);
+
+        // ========================================
+        // CREATE ATTACK ACTION
+        // ========================================
         FirebaseGameRoom.LastActionData action = new FirebaseGameRoom.LastActionData();
         action.type = "attack";
         action.player = myPlayerKey;
         action.targetRow = row;
         action.targetCol = col;
-        action.wasHit = false;
+        action.wasHit = false; // Will be determined by defender
         action.duelPending = true;
         action.timestamp = System.currentTimeMillis();
 
-        firebaseManager.sendAction(roomCode, action);
+        // ========================================
+        // SEND TO FIREBASE (with Garden Hose flag)
+        // ========================================
+        firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                // Write the main action
+                snapshot.getRef().child("lastAction").setValue(action.toMap())
+                        .addOnSuccessListener(aVoid -> {
+                            Log.d(TAG, "✅ Attack action sent successfully");
 
-        // ✅ NEW: Save Garden Hose flag to Firebase if active
-        if (usingGardenHose) {
-            firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
-                @Override
-                public void onDataChange(@NonNull DataSnapshot snapshot) {
-                    snapshot.getRef().child("lastAction").child("gardenHoseActive").setValue(true);
-                    snapshot.getRef().removeEventListener(this);
-                }
+                            // ✅ FIX: Add Garden Hose flag if active
+                            if (usingGardenHose) {
+                                snapshot.getRef().child("lastAction")
+                                        .child("gardenHoseActive")
+                                        .setValue(true)
+                                        .addOnSuccessListener(a -> {
+                                            Log.d(TAG, "✅ Garden Hose flag added to attack");
+                                        })
+                                        .addOnFailureListener(e -> {
+                                            Log.e(TAG, "❌ Failed to add Garden Hose flag: " + e.getMessage());
+                                        });
+                            }
+                        })
+                        .addOnFailureListener(e -> {
+                            Log.e(TAG, "❌ Failed to send attack: " + e.getMessage());
 
-                @Override
-                public void onCancelled(@NonNull DatabaseError error) {}
-            });
-        }
+                            runOnUiThread(() -> {
+                                Toast.makeText(MultiplayerBattleActivity.this,
+                                        "Failed to send attack. Check connection.",
+                                        Toast.LENGTH_SHORT).show();
 
-        Log.d(TAG, "Attack sent to Firebase: (" + row + "," + col + ") - GardenHose: " + usingGardenHose);
+                                // Reset state so player can try again
+                                hasAttackedThisTurn = false;
+                                waitingForDuelResult = false;
+                                setEnemyGridClickable(true);
+                            });
+                        });
 
-        Toast.makeText(this, "Attacking (" + row + "," + col + ")...", Toast.LENGTH_SHORT).show();
+                // Remove listener after single use
+                snapshot.getRef().removeEventListener(this);
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e(TAG, "Firebase error: " + error.getMessage());
+
+                runOnUiThread(() -> {
+                    Toast.makeText(MultiplayerBattleActivity.this,
+                            "Connection error: " + error.getMessage(),
+                            Toast.LENGTH_SHORT).show();
+
+                    // Reset state
+                    hasAttackedThisTurn = false;
+                    waitingForDuelResult = false;
+                    setEnemyGridClickable(true);
+                });
+            }
+        });
+
+        // Show feedback to player
+        Toast.makeText(this, "Attacking (" + row + "," + col + ")..." +
+                        (usingGardenHose ? " 💧 Garden Hose!" : ""),
+                Toast.LENGTH_SHORT).show();
     }
 
 
-    // ✅ FIX: Pass Garden Hose status to MiniDuel
+    // FIX: Pass Garden Hose status to MiniDuel
     private void launchMiniDuel(int row, int col, String unitType, boolean isPlayerAttacking) {
         Log.d(TAG, "Launching mini-duel. Attacking: " + isPlayerAttacking + ", Unit: " + unitType);
 
@@ -635,7 +725,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         intent.putExtra(MiniDuelActivity.EXTRA_TARGET_COL, col);
         intent.putExtra("IS_PLAYER_ATTACKING", isPlayerAttacking);
 
-        // ✅ FIXED: Check if Garden Hose is active for THIS duel
+        // FIXED: Check if Garden Hose is active for THIS duel
         boolean gardenHoseActive = powerManager.isGardenHoseActive();
         intent.putExtra("GARDEN_HOSE_ACTIVE", gardenHoseActive);
 
@@ -645,7 +735,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         startActivityForResult(intent, REQUEST_CODE_MINI_DUEL);
     }
 
-    // ✅ FIX: Deactivate Garden Hose after MiniDuel result
+    // FIX: Deactivate Garden Hose after MiniDuel result
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -657,7 +747,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
             Log.d(TAG, "Received FINAL result from mini-duel - wasHit: " + wasHit);
 
-            // ✅ FIXED: Deactivate Garden Hose after use
+            // FIXED: Deactivate Garden Hose after use
             if (powerManager.isGardenHoseActive()) {
                 powerManager.deactivateGardenHose();
                 updatePowerButtons();
@@ -765,75 +855,134 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
         runOnUiThread(() -> {
             if (unit != null) {
-                // ✅ Check fence protection
+                // ========================================
+                // 1. ✅ CHECK FENCE PROTECTION (Priority 1)
+                // ========================================
                 if (powerManager.isUnitProtected(unit)) {
                     ImageView cell = playerCells[unit.row][unit.col];
-                    cell.setBackgroundColor(Color.parseColor("#8FBC8F"));
-                    cell.animate().scaleX(1.3f).scaleY(1.3f).setDuration(200)
-                            .withEndAction(() -> cell.animate().scaleX(1f).scaleY(1f).setDuration(200).start())
+                    cell.setBackgroundColor(Color.parseColor("#8FBC8F")); // Green (protected)
+
+                    // Shield bounce animation
+                    cell.animate()
+                            .scaleX(1.3f)
+                            .scaleY(1.3f)
+                            .setDuration(200)
+                            .withEndAction(() -> {
+                                cell.animate()
+                                        .scaleX(1f)
+                                        .scaleY(1f)
+                                        .setDuration(200)
+                                        .start();
+                            })
                             .start();
 
                     powerManager.removeFenceProtection();
-                    Toast.makeText(this, "🛡️ Fence Shield absorbed the attack!", Toast.LENGTH_LONG).show();
-                    return;
+                    Toast.makeText(this, "🛡️ Fence Shield absorbed the attack!",
+                            Toast.LENGTH_LONG).show();
+
+                    // Clear choices and continue
+                    new Handler().postDelayed(this::clearChoices, 2000);
+                    return; // Exit - unit fully protected
                 }
 
+                // ========================================
+                // 2. HANDLE DIRECT HIT (Destroyed)
+                // ========================================
                 if (wasHit) {
-                    // ✅ Check cat teleport ability before destruction
+                    // ✅ CAT TELEPORT ABILITY (Before destruction)
                     if (unit.type.equals("cat") && !unit.abilityUsed) {
+                        Log.d(TAG, "Cat ability triggered - attempting teleport");
+
                         boolean teleported = abilityManager.activateCatTeleport(
                                 unit, playerCells, playerUnits, true);
+
                         if (teleported) {
-                            unit.health = 1;
-                            return;
+                            unit.health = 1; // Cat survives with 1 HP
+                            Toast.makeText(this, "🐱 Cat teleported to safety!",
+                                    Toast.LENGTH_LONG).show();
+
+                            // Clear choices and continue
+                            new Handler().postDelayed(this::clearChoices, 2000);
+                            return; // Exit - cat escaped
                         }
                     }
 
+                    // Cat didn't teleport or ability already used - DESTROY unit
                     unit.health = 0;
                     updateUnitsRemaining(myPlayerKey, -1);
 
                     ImageView cell = playerCells[unit.row][unit.col];
-                    cell.setBackgroundColor(Color.parseColor("#8B4513"));
+                    cell.setBackgroundColor(Color.parseColor("#8B4513")); // Brown (destroyed)
                     cell.setImageResource(R.drawable.explosion_icon);
 
+                    // Destruction animation
                     cell.animate()
                             .scaleX(0.5f)
                             .scaleY(0.5f)
                             .alpha(0.5f)
+                            .rotation(360f)
                             .setDuration(600)
                             .start();
 
-                    Toast.makeText(this, "💀 Your unit was destroyed!", Toast.LENGTH_LONG).show();
-                } else {
-                    // Damaged
+                    Toast.makeText(this, "💀 Your " + unit.type + " was destroyed!",
+                            Toast.LENGTH_LONG).show();
+
+                }
+                // ========================================
+                // 3. HANDLE PARTIAL HIT (Damaged)
+                // ========================================
+                else {
                     unit.health--;
 
                     ImageView cell = playerCells[unit.row][unit.col];
 
-                    // ✅ Rose ability - change color
+                    // ✅ ROSE COLOR CHANGE ABILITY (After being damaged)
                     if (unit.type.equals("rose") && !unit.abilityUsed) {
+                        Log.d(TAG, "Rose ability triggered - changing color");
                         abilityManager.activateRoseColorChange(unit, cell);
                     }
 
-                    cell.setBackgroundColor(Color.parseColor("#FFA500"));
+                    // Set cell to orange (damaged)
+                    cell.setBackgroundColor(Color.parseColor("#FFA500")); // Orange
 
-                    // ✅ Use correct icon for rose
+                    // Update icon (important for rose - it might have changed color)
                     if (unit.type.equals("rose")) {
                         cell.setImageResource(abilityManager.getRoseIcon(unit));
                     } else {
                         cell.setImageResource(getUnitIcon(unit.type));
                     }
 
-                    // ✅ Dog ability - activate fear
-                    if (unit.type.equals("dog") && !unit.abilityUsed) {
-                        abilityManager.activateDogFear(unit, cell);
-                    }
+                    // Damage flash animation
+                    cell.animate()
+                            .alpha(0.3f)
+                            .setDuration(200)
+                            .withEndAction(() -> {
+                                cell.animate()
+                                        .alpha(1f)
+                                        .setDuration(200)
+                                        .start();
+                            })
+                            .start();
 
-                    Toast.makeText(this, "🛡️ Your unit was damaged!", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "🛡️ Your " + unit.type + " was damaged! (1 HP left)",
+                            Toast.LENGTH_LONG).show();
+
+                    // ✅ DOG FEAR ABILITY (After being damaged to 1 HP)
+                    if (unit.type.equals("dog") && !unit.abilityUsed) {
+                        Log.d(TAG, "Dog ability triggered - activating fear");
+
+                        // Small delay to let damage animation finish first
+                        new Handler().postDelayed(() -> {
+                            abilityManager.activateDogFear(unit, cell);
+                        }, 400);
+                    }
                 }
+            } else {
+                Log.w(TAG, "No unit found at (" + row + "," + col + ") - this shouldn't happen");
             }
         });
 
+        // Clear choices after processing
         new Handler().postDelayed(this::clearChoices, 2000);
     }
 

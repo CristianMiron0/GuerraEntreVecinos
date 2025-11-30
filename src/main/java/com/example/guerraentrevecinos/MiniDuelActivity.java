@@ -259,7 +259,29 @@ public class MiniDuelActivity extends AppCompatActivity {
         }
     }
 
-    // ✅ ALSO UPDATE: selectNumber() to handle Garden Hose for BOTH players
+    private Handler timeoutHandler = new Handler();
+    private Runnable timeoutRunnable = new Runnable() {
+        @Override
+        public void run() {
+            Log.w(TAG, "⏰ TIMEOUT: Opponent didn't respond in 30 seconds");
+
+            runOnUiThread(() -> {
+                Toast.makeText(MiniDuelActivity.this,
+                        "Opponent timeout. Returning to game...",
+                        Toast.LENGTH_LONG).show();
+
+                // Return with default result
+                Intent resultIntent = new Intent();
+                resultIntent.putExtra(EXTRA_WAS_HIT, false); // Default to miss
+                resultIntent.putExtra(EXTRA_TARGET_ROW, getIntent().getIntExtra(EXTRA_TARGET_ROW, -1));
+                resultIntent.putExtra(EXTRA_TARGET_COL, getIntent().getIntExtra(EXTRA_TARGET_COL, -1));
+                resultIntent.putExtra("IS_PLAYER_ATTACKING", isPlayerAttacking);
+                setResult(RESULT_OK, resultIntent);
+                finish();
+            });
+        }
+    };
+
     private void selectNumber(int number) {
         if (playerChoice != -1) return;
 
@@ -267,7 +289,7 @@ public class MiniDuelActivity extends AppCompatActivity {
                 " (GardenHose: " + isGardenHoseActive +
                 ", IsAttacking: " + isPlayerAttacking + ")");
 
-        // ✅ Garden Hose logic - ONLY for attacker
+        // Garden Hose logic - ONLY for attacker
         if (isGardenHoseActive && isPlayerAttacking && firstChoice == -1) {
             firstChoice = number;
             highlightButton(number);
@@ -307,11 +329,14 @@ public class MiniDuelActivity extends AppCompatActivity {
 
             saveChoiceToFirebase();
 
+            // NEW: Add timeout in case opponent disconnects
+            timeoutHandler.postDelayed(timeoutRunnable, 30000); // 30 second timeout
+
         } else {
             // Solo mode
             enemyChoice = new Random().nextInt(4) + 1;
 
-            // ✅ If Garden Hose active and we're defending, enemy gets 2 choices
+            // If Garden Hose active and we're defending, enemy gets 2 choices
             if (isGardenHoseActive && !isPlayerAttacking) {
                 firstChoice = enemyChoice;
                 do {
@@ -325,7 +350,8 @@ public class MiniDuelActivity extends AppCompatActivity {
         }
     }
 
-    // ✅ FIX: Save Garden Hose choices properly to Firebase
+
+    // FIX: Save Garden Hose choices properly to Firebase
     private void saveChoiceToFirebase() {
         String choiceKey = isPlayerAttacking ? "attackerChoice" : "defenderChoice";
 
@@ -374,7 +400,7 @@ public class MiniDuelActivity extends AppCompatActivity {
         });
     }
 
-    // ✅ FIX: Read Garden Hose second choice from Firebase
+    // FIX: Read Garden Hose second choice from Firebase
     private void checkBothChoices() {
         Log.d(TAG, "Checking for both choices...");
 
@@ -649,6 +675,7 @@ public class MiniDuelActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        timeoutHandler.removeCallbacks(timeoutRunnable); // Cancel timeout
         if (choiceListener != null && firebaseManager != null && roomCode != null) {
             firebaseManager.removeRoomListener(roomCode, choiceListener);
         }

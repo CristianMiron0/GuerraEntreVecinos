@@ -503,6 +503,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                         if (waitingForDuelResult) {
                             Integer attackerChoice = lastActionSnapshot.child("attackerChoice").getValue(Integer.class);
                             Integer defenderChoice = lastActionSnapshot.child("defenderChoice").getValue(Integer.class);
+                            duelPending = lastActionSnapshot.child("duelPending").getValue(Boolean.class);
 
                             // NEW: Check for Garden Hose second choice
                             Integer attackerSecond = lastActionSnapshot.child("attackerSecondChoice").getValue(Integer.class);
@@ -511,9 +512,26 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                                     (attackerSecond != null ? " & " + attackerSecond : "") +
                                     ", Defender: " + defenderChoice + ", Waiting: " + waitingForDuelResult);
 
-                            if (attackerChoice != null && defenderChoice != null) {
-                                Log.d(TAG, "✅ BOTH CHOICES RECEIVED! Attacker: " + attackerChoice +
-                                        ", Defender: " + defenderChoice);
+                            if (attackerChoice != null && defenderChoice != null &&
+                                    (duelPending == null || !duelPending)) {
+
+                                Log.w(TAG, "⚠️ DEADLOCK DETECTED! Both choices exist but not processed. Force clearing...");
+
+                                waitingForDuelResult = false;
+
+                                runOnUiThread(() -> {
+                                    Toast.makeText(MultiplayerBattleActivity.this,
+                                            "Synchronization issue detected. Continuing game...",
+                                            Toast.LENGTH_SHORT).show();
+
+                                    // Force clear and continue
+                                    new Handler().postDelayed(() -> {
+                                        clearChoices();
+                                        if (isMyTurn) {
+                                            endMyTurn();
+                                        }
+                                    }, 1000);
+                                });
 
                                 // Only process once
                                 if (timestamp != null && timestamp > lastProcessedActionTimestamp) {
@@ -740,27 +758,39 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
+        Log.d(TAG, "=== MINI DUEL RESULT RECEIVED ===");
+        Log.d(TAG, "Request code: " + requestCode + ", Result code: " + resultCode);
+
         if (requestCode == REQUEST_CODE_MINI_DUEL && resultCode == RESULT_OK) {
             boolean wasHit = data.getBooleanExtra(MiniDuelActivity.EXTRA_WAS_HIT, false);
             int row = pendingAttackRow;
             int col = pendingAttackCol;
 
-            Log.d(TAG, "Received FINAL result from mini-duel - wasHit: " + wasHit);
+            Log.d(TAG, "Duel result - wasHit: " + wasHit + ", row: " + row + ", col: " + col);
+            Log.d(TAG, "I am attacker: " + iAmAttackerInCurrentDuel);
 
-            // FIXED: Deactivate Garden Hose after use
+            // FIX: Deactivate Garden Hose after use
             if (powerManager.isGardenHoseActive()) {
                 powerManager.deactivateGardenHose();
                 updatePowerButtons();
-                Toast.makeText(this, "Garden Hose used!", Toast.LENGTH_SHORT).show();
+                Log.d(TAG, "Garden Hose deactivated");
             }
 
+            // FIX: Process result based on role
             if (iAmAttackerInCurrentDuel) {
+                Log.d(TAG, "Processing as ATTACKER");
                 handleMyAttackResult(row, col, wasHit);
             } else {
+                Log.d(TAG, "Processing as DEFENDER");
                 handleOpponentAttackResult(row, col, wasHit);
             }
+        } else {
+            Log.w(TAG, "MiniDuel returned unexpected result code: " + resultCode);
 
+            // FIX: Reset state if duel was cancelled or failed
             waitingForDuelResult = false;
+            hasAttackedThisTurn = false;
+            setEnemyGridClickable(isMyTurn);
         }
     }
 
@@ -818,6 +848,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
     }
 
     private void handleMyAttackResult(int row, int col, boolean wasHit) {
+        Log.d(TAG, "=== ATTACKER PROCESSING RESULT ===");
         Log.d(TAG, "Handling my attack result at (" + row + "," + col + "), wasHit: " + wasHit);
 
         runOnUiThread(() -> {
@@ -830,6 +861,14 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                 cell.setAlpha(1f);
                 enemyRevealedCells[row][col] = true;
 
+                // FIX: Add explosion animation
+                cell.animate()
+                        .scaleX(1.3f)
+                        .scaleY(1.3f)
+                        .alpha(0.5f)
+                        .setDuration(600)
+                        .start();
+
                 Toast.makeText(this, "💥 Direct hit! Enemy unit destroyed!", Toast.LENGTH_LONG).show();
             } else {
                 ImageView cell = enemyCells[row][col];
@@ -837,11 +876,21 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                 cell.setAlpha(1f);
                 enemyRevealedCells[row][col] = true;
 
+                // FIX: Add damage animation
+                cell.animate()
+                        .alpha(0.5f)
+                        .setDuration(200)
+                        .withEndAction(() -> {
+                            cell.animate().alpha(1f).setDuration(200).start();
+                        })
+                        .start();
+
                 Toast.makeText(this, "⚡ Partial hit! Enemy unit damaged!", Toast.LENGTH_LONG).show();
             }
         });
 
-        // Clear choices and end turn
+        // FIX: Always clear choices and end turn after processing
+        Log.d(TAG, "Clearing choices and ending turn in 2 seconds...");
         new Handler().postDelayed(() -> {
             clearChoices();
             endMyTurn();
@@ -1001,16 +1050,21 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
     }
 
     private void clearChoices() {
-        Log.d(TAG, "Clearing choices from Firebase");
+        Log.d(TAG, "=== CLEARING DUEL CHOICES ===");
 
         firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
-                // Clear both choices
+                // Clear all duel-related data
                 snapshot.getRef().child("lastAction").child("attackerChoice").removeValue();
                 snapshot.getRef().child("lastAction").child("defenderChoice").removeValue();
+                snapshot.getRef().child("lastAction").child("attackerSecondChoice").removeValue();
+                snapshot.getRef().child("lastAction").child("gardenHoseActive").removeValue();
 
-                Log.d(TAG, "Choices cleared");
+                // FIX: Also clear duelPending flag
+                snapshot.getRef().child("lastAction").child("duelPending").setValue(false);
+
+                Log.d(TAG, "✅ Choices and duel flags cleared");
                 snapshot.getRef().removeEventListener(this);
             }
 
@@ -1022,28 +1076,43 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
     }
 
     private void endMyTurn() {
-        Log.d(TAG, "Ending my turn");
+        Log.d(TAG, "=== ENDING MY TURN ===");
+        Log.d(TAG, "My player key: " + myPlayerKey + ", Switching to: " + opponentPlayerKey);
 
-        // Clear action first
-        clearDuelPending();
+        // ✅ FIX: Reset local state immediately
+        waitingForDuelResult = false;
+        hasAttackedThisTurn = false;
 
         String newTurn = opponentPlayerKey;
 
-        // Small delay to ensure action is cleared
+        // Small delay to ensure choices are cleared
         new Handler().postDelayed(() -> {
-            // Update current turn in Firebase
             firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
                 @Override
                 public void onDataChange(@NonNull DataSnapshot snapshot) {
-                    snapshot.getRef().child("gameState").child("currentTurn").setValue(newTurn);
+                    // FIX: Update turn
+                    snapshot.getRef().child("gameState").child("currentTurn").setValue(newTurn)
+                            .addOnSuccessListener(aVoid -> {
+                                Log.d(TAG, "✅ Turn switched to: " + newTurn);
 
-                    // Increment round if back to player1
-                    if ("player1".equals(newTurn)) {
-                        Integer currentRound = snapshot.child("gameState").child("currentRound").getValue(Integer.class);
-                        if (currentRound != null) {
-                            snapshot.getRef().child("gameState").child("currentRound").setValue(currentRound + 1);
-                        }
-                    }
+                                // FIX: Increment round if back to player1
+                                if ("player1".equals(newTurn)) {
+                                    Integer currentRound = snapshot.child("gameState")
+                                            .child("currentRound").getValue(Integer.class);
+                                    if (currentRound != null) {
+                                        int nextRound = currentRound + 1;
+                                        snapshot.getRef().child("gameState")
+                                                .child("currentRound")
+                                                .setValue(nextRound)
+                                                .addOnSuccessListener(a -> {
+                                                    Log.d(TAG, "✅ Round incremented to: " + nextRound);
+                                                });
+                                    }
+                                }
+                            })
+                            .addOnFailureListener(e -> {
+                                Log.e(TAG, "❌ Failed to switch turn: " + e.getMessage());
+                            });
 
                     snapshot.getRef().removeEventListener(this);
                 }
@@ -1053,7 +1122,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                     Log.e(TAG, "Failed to end turn: " + error.getMessage());
                 }
             });
-        }, 300);
+        }, 500); // FIX: Increased delay to 500ms to ensure Firebase sync
     }
 
     private void updateUnitsRemaining(String playerKey, int change) {

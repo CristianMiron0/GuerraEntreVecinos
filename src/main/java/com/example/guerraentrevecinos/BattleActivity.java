@@ -844,6 +844,7 @@ public class BattleActivity extends AppCompatActivity {
         btnNighttimeRelocation = findViewById(R.id.btnNighttimeRelocation);
         btnTier2Power = findViewById(R.id.btnTier2Power);
 
+        // Set power icon based on selection
         switch (selectedPower) {
             case "spy_drone":
                 btnTier2Power.setText("🐝\nSpy");
@@ -856,33 +857,50 @@ public class BattleActivity extends AppCompatActivity {
                 break;
         }
 
+        // FIX: Garden Hose button
         btnGardenHose.setOnClickListener(v -> {
             if (powerManager.canUseGardenHose() && isPlayerTurn && !hasAttackedThisTurn) {
                 powerManager.activateGardenHose();
-                Toast.makeText(this, "💧 Garden Hose activated! Pick 2 numbers in next duel.",
+                Toast.makeText(this, "💧 Garden Hose activated! Next attack picks 2 numbers.",
                         Toast.LENGTH_LONG).show();
                 updatePowerButtons();
             } else if (hasAttackedThisTurn) {
                 Toast.makeText(this, "Already attacked this turn!", Toast.LENGTH_SHORT).show();
+            } else if (!powerManager.canUseGardenHose()) {
+                int cooldown = powerManager.getGardenHoseCooldown();
+                Toast.makeText(this, "Garden Hose on cooldown: " + cooldown + " rounds",
+                        Toast.LENGTH_SHORT).show();
             }
         });
 
+        // FIX: Nighttime Relocation button
         btnNighttimeRelocation.setOnClickListener(v -> {
             if (powerManager.canUseNighttimeRelocation() && isPlayerTurn && !hasAttackedThisTurn) {
                 activateUnitSelectionMode("move");
             } else if (hasAttackedThisTurn) {
                 Toast.makeText(this, "Already attacked this turn!", Toast.LENGTH_SHORT).show();
+            } else if (!powerManager.canUseNighttimeRelocation()) {
+                int cooldown = powerManager.getNighttimeRelocationCooldown();
+                Toast.makeText(this, "Nighttime Relocation on cooldown: " + cooldown + " rounds",
+                        Toast.LENGTH_SHORT).show();
             }
         });
 
+        // FIX: Tier 2 Power button
         btnTier2Power.setOnClickListener(v -> {
             if (powerManager.canUseTier2Power() && isPlayerTurn && !hasAttackedThisTurn) {
                 handleTier2PowerClick();
             } else if (hasAttackedThisTurn) {
                 Toast.makeText(this, "Already attacked this turn!", Toast.LENGTH_SHORT).show();
+            } else if (!powerManager.canUseTier2Power()) {
+                int cooldown = powerManager.getTier2PowerCooldown();
+                String powerName = selectedPower.replace("_", " ");
+                Toast.makeText(this, powerName + " on cooldown: " + cooldown + " rounds",
+                        Toast.LENGTH_SHORT).show();
             }
         });
 
+        // Initialize button states
         updatePowerButtons();
     }
 
@@ -931,53 +949,61 @@ public class BattleActivity extends AppCompatActivity {
     }
 
     private void updatePowerButtons() {
-        // Garden Hose
-        if (powerManager.canUseGardenHose() && isPlayerTurn && !hasAttackedThisTurn) {
-            btnGardenHose.setEnabled(true);
-            btnGardenHose.setText("💧\nHose");
-        } else if (powerManager.isGardenHoseActive()) {
+        // ✅ Garden Hose
+        if (powerManager.isGardenHoseActive()) {
             btnGardenHose.setEnabled(false);
             btnGardenHose.setText("💧\nActive");
+            btnGardenHose.setAlpha(0.7f);
+        } else if (powerManager.canUseGardenHose() && !hasAttackedThisTurn) {
+            btnGardenHose.setEnabled(true);
+            btnGardenHose.setText("💧\nHose");
+            btnGardenHose.setAlpha(1.0f);
         } else {
             btnGardenHose.setEnabled(false);
             int cooldown = powerManager.getGardenHoseCooldown();
             btnGardenHose.setText(cooldown > 0 ? "💧\n" + cooldown : "💧\nHose");
+            btnGardenHose.setAlpha(0.5f);
         }
 
-        // Nighttime Relocation
-        if (powerManager.canUseNighttimeRelocation() && isPlayerTurn && !hasAttackedThisTurn) {
+        // ✅ Nighttime Relocation
+        if (powerManager.canUseNighttimeRelocation() && !hasAttackedThisTurn) {
             btnNighttimeRelocation.setEnabled(true);
             btnNighttimeRelocation.setText("🌙\nMove");
+            btnNighttimeRelocation.setAlpha(1.0f);
         } else {
             btnNighttimeRelocation.setEnabled(false);
             int cooldown = powerManager.getNighttimeRelocationCooldown();
             btnNighttimeRelocation.setText(cooldown > 0 ? "🌙\n" + cooldown : "🌙\nMove");
+            btnNighttimeRelocation.setAlpha(0.5f);
         }
 
-        // Tier 2 Power
-        if (powerManager.canUseTier2Power() && isPlayerTurn && !hasAttackedThisTurn) {
+        // ✅ Tier 2 Power
+        String icon = "";
+        String name = "";
+        switch (selectedPower) {
+            case "spy_drone":
+                icon = "🐝";
+                name = "Spy";
+                break;
+            case "fence_shield":
+                icon = "🛡️";
+                name = "Fence";
+                break;
+            case "fertilizer":
+                icon = "🌱";
+                name = "Heal";
+                break;
+        }
+
+        if (powerManager.canUseTier2Power() && !hasAttackedThisTurn) {
             btnTier2Power.setEnabled(true);
-            switch (selectedPower) {
-                case "spy_drone":
-                    btnTier2Power.setText("🐝\nSpy");
-                    break;
-                case "fence_shield":
-                    btnTier2Power.setText("🛡️\nFence");
-                    break;
-                case "fertilizer":
-                    btnTier2Power.setText("🌱\nHeal");
-                    break;
-            }
+            btnTier2Power.setText(icon + "\n" + name);
+            btnTier2Power.setAlpha(1.0f);
         } else {
             btnTier2Power.setEnabled(false);
-            String icon = "";
-            switch (selectedPower) {
-                case "spy_drone": icon = "🐝"; break;
-                case "fence_shield": icon = "🛡️"; break;
-                case "fertilizer": icon = "🌱"; break;
-            }
             int cooldown = powerManager.getTier2PowerCooldown();
-            btnTier2Power.setText(cooldown > 0 ? icon + "\n" + cooldown : icon + "\nReady");
+            btnTier2Power.setText(cooldown > 0 ? icon + "\n" + cooldown : icon + "\n" + name);
+            btnTier2Power.setAlpha(0.5f);
         }
     }
 
@@ -1013,50 +1039,67 @@ public class BattleActivity extends AppCompatActivity {
     }
 
     private void handleNighttimeRelocation(SetupActivity.UnitPosition unit) {
+        // FIX: Create a proper dialog with 4 direction buttons
         new androidx.appcompat.app.AlertDialog.Builder(this)
                 .setTitle("🌙 Move " + unit.type)
-                .setMessage("Choose direction to move:")
+                .setMessage("Choose direction:")
                 .setPositiveButton("⬆️ Up", (dialog, which) -> moveUnit(unit, -1, 0))
                 .setNegativeButton("⬇️ Down", (dialog, which) -> moveUnit(unit, 1, 0))
                 .setNeutralButton("Cancel", (dialog, which) -> cancelPowerMode())
                 .show();
 
-        new androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle("🌙 Move " + unit.type)
-                .setMessage("Or choose:")
-                .setPositiveButton("⬅️ Left", (dialog, which) -> moveUnit(unit, 0, -1))
-                .setNegativeButton("➡️ Right", (dialog, which) -> moveUnit(unit, 0, 1))
-                .setNeutralButton("Cancel", (dialog, which) -> cancelPowerMode())
-                .show();
+        // Show second dialog for left/right
+        new Handler().postDelayed(() -> {
+            new androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("🌙 Move " + unit.type)
+                    .setMessage("Or choose:")
+                    .setPositiveButton("⬅️ Left", (dialog, which) -> moveUnit(unit, 0, -1))
+                    .setNegativeButton("➡️ Right", (dialog, which) -> moveUnit(unit, 0, 1))
+                    .setNeutralButton("Cancel", (dialog, which) -> cancelPowerMode())
+                    .show();
+        }, 100);
     }
 
     private void moveUnit(SetupActivity.UnitPosition unit, int rowOffset, int colOffset) {
         int newRow = unit.row + rowOffset;
         int newCol = unit.col + colOffset;
 
+        // Validate move
         if (newRow < 0 || newRow >= 8 || newCol < 0 || newCol >= 8) {
             Toast.makeText(this, "Can't move outside the grid!", Toast.LENGTH_SHORT).show();
+            cancelPowerMode();
             return;
         }
 
+        // Check if new position is occupied
         for (SetupActivity.UnitPosition u : playerUnits) {
             if (u.row == newRow && u.col == newCol && u.health > 0) {
                 Toast.makeText(this, "Cell is occupied!", Toast.LENGTH_SHORT).show();
+                cancelPowerMode();
                 return;
             }
         }
 
+        // FIX: Actually move the unit!
         ImageView oldCell = playerCells[unit.row][unit.col];
+
+        // Clear old cell
         oldCell.setImageDrawable(null);
         oldCell.setTag(null);
+        oldCell.setBackgroundColor(Color.parseColor("#8FBC8F"));
 
+        // Update unit position
+        int oldRow = unit.row;
+        int oldCol = unit.col;
         unit.row = newRow;
         unit.col = newCol;
 
+        // Update new cell
         ImageView newCell = playerCells[newRow][newCol];
         newCell.setImageResource(getUnitIcon(unit.type));
         newCell.setTag(unit);
 
+        // Animate move
         newCell.setScaleX(0.3f);
         newCell.setScaleY(0.3f);
         newCell.animate()
@@ -1065,23 +1108,44 @@ public class BattleActivity extends AppCompatActivity {
                 .setDuration(400)
                 .start();
 
+        // FIX: Use the power and update cooldown
         powerManager.useNighttimeRelocation();
         savePowerUsageToDatabase("nighttime_relocation");
 
+        Toast.makeText(this, "🌙 " + unit.type + " moved from (" + oldRow + "," + oldCol +
+                ") to (" + newRow + "," + newCol + ")!", Toast.LENGTH_LONG).show();
+
+        // Exit power mode
         cancelPowerMode();
         updatePowerButtons();
-
-        Toast.makeText(this, "🌙 Unit moved successfully!", Toast.LENGTH_SHORT).show();
     }
 
     private void handleFenceShield(SetupActivity.UnitPosition unit) {
+        // ✅ Set fence protection
         powerManager.setFenceProtectedUnit(unit);
         powerManager.useTier2Power();
 
         ImageView cell = playerCells[unit.row][unit.col];
+
+        // ✅ Visual indicator - teal/cyan color
         cell.setBackgroundColor(Color.parseColor("#4DB6AC"));
 
-        Toast.makeText(this, "🛡️ " + unit.type + " is now protected!", Toast.LENGTH_LONG).show();
+        // Shield animation
+        cell.animate()
+                .scaleX(1.2f)
+                .scaleY(1.2f)
+                .setDuration(300)
+                .withEndAction(() -> {
+                    cell.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(200)
+                            .start();
+                })
+                .start();
+
+        Toast.makeText(this, "🛡️ " + unit.type + " is now protected from next attack!",
+                Toast.LENGTH_LONG).show();
 
         savePowerUsageToDatabase("fence_shield");
 
@@ -1090,19 +1154,32 @@ public class BattleActivity extends AppCompatActivity {
     }
 
     private void handleFertilizer(SetupActivity.UnitPosition unit) {
+        // Check if unit needs healing
         if (unit.health >= 2) {
-            Toast.makeText(this, "Unit is already at full health!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, unit.type + " is already at full health!", Toast.LENGTH_SHORT).show();
+            cancelPowerMode();
             return;
         }
 
+        // Heal the unit
         unit.health = 2;
 
         ImageView cell = playerCells[unit.row][unit.col];
+
+        // Restore green background (full health)
         cell.setBackgroundColor(Color.parseColor("#8FBC8F"));
 
+        // Update icon
+        if (unit.type.equals("rose")) {
+            cell.setImageResource(abilityManager.getRoseIcon(unit));
+        } else {
+            cell.setImageResource(getUnitIcon(unit.type));
+        }
+
+        // Healing animation
         cell.animate()
-                .scaleX(1.2f)
-                .scaleY(1.2f)
+                .scaleX(1.3f)
+                .scaleY(1.3f)
                 .setDuration(200)
                 .withEndAction(() -> {
                     cell.animate()
@@ -1113,11 +1190,11 @@ public class BattleActivity extends AppCompatActivity {
                 })
                 .start();
 
+        // Use power
         powerManager.useTier2Power();
+        savePowerUsageToDatabase("fertilizer");
 
         Toast.makeText(this, "🌱 " + unit.type + " healed to full HP!", Toast.LENGTH_LONG).show();
-
-        savePowerUsageToDatabase("fertilizer");
 
         cancelPowerMode();
         updatePowerButtons();

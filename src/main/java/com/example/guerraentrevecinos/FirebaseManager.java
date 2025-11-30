@@ -42,8 +42,8 @@ public class FirebaseManager {
             isInitialized = true;
             Log.d(TAG, "Firebase initialized successfully");
 
-            // Don't sign in immediately - wait until needed
-            // This prevents crashes if Auth isn't configured
+            // ✅ FIX: Sign in immediately!
+            signInAnonymously();
 
         } catch (Exception e) {
             Log.e(TAG, "Error initializing Firebase", e);
@@ -110,7 +110,7 @@ public class FirebaseManager {
 
         Log.d(TAG, "Creating room with code: " + roomCode);
 
-        // Wait for authentication before creating room
+        // FIX: Always sign in first, then create room
         if (auth.getCurrentUser() == null) {
             Log.d(TAG, "Not authenticated, signing in...");
             auth.signInAnonymously()
@@ -123,6 +123,7 @@ public class FirebaseManager {
                         listener.onFailure("Authentication failed: " + e.getMessage());
                     });
         } else {
+            Log.d(TAG, "Already authenticated: " + auth.getCurrentUser().getUid());
             createRoomInternal(roomCode, playerName, listener);
         }
     }

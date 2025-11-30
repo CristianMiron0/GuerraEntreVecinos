@@ -314,6 +314,7 @@ public class MiniDuelActivity extends AppCompatActivity {
 
         if (isMultiplayer) {
             waitingForOpponent = true;
+            timeoutHandler.postDelayed(timeoutRunnable, 30000); // 30 second timeout
 
             Log.d(TAG, "Multiplayer - Player chose: " + playerChoice +
                     (isGardenHoseActive && isPlayerAttacking ?

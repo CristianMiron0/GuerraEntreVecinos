@@ -180,20 +180,32 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         String message = "";
         switch (powerMode) {
             case "move":
-                message = "🌙 Select a unit to move to adjacent cell";
+                message = "🌙 Select a unit to move";
+                // ✅ Show player garden for move
+                enemyGardenSection.setVisibility(View.GONE);
+                playerGardenSection.setVisibility(View.VISIBLE);
                 break;
             case "spy":
                 message = "🐝 Click on enemy grid to reveal 3x3 area";
+                // ✅ Keep enemy garden visible for spy
+                playerGardenSection.setVisibility(View.GONE);
+                enemyGardenSection.setVisibility(View.VISIBLE);
                 break;
             case "fence":
                 message = "🛡️ Select a unit to protect";
+                // ✅ Show player garden for fence
+                enemyGardenSection.setVisibility(View.GONE);
+                playerGardenSection.setVisibility(View.VISIBLE);
                 break;
             case "fertilizer":
                 message = "🌱 Select a wounded unit to heal";
+                // ✅ Show player garden for fertilizer
+                enemyGardenSection.setVisibility(View.GONE);
+                playerGardenSection.setVisibility(View.VISIBLE);
                 break;
         }
 
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+        Toast.makeText(this, message + "\n(Tap screen to cancel)", Toast.LENGTH_LONG).show();
         tvTurnIndicator.setText(message);
     }
 
@@ -1209,61 +1221,75 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
     }
 
     private void updatePowerButtons() {
-        if (!isMyTurn || waitingForDuelResult) {
-            // Disable all during opponent's turn or while waiting
+        // ✅ FIX: Only disable powers during actual duel, not during attack turn
+        if (!isMyTurn) {
+            // Disable all during opponent's turn
             btnGardenHose.setEnabled(false);
+            btnGardenHose.setAlpha(0.5f);
             btnNighttimeRelocation.setEnabled(false);
+            btnNighttimeRelocation.setAlpha(0.5f);
             btnTier2Power.setEnabled(false);
+            btnTier2Power.setAlpha(0.5f);
             return;
         }
 
-        // Garden Hose - ✅ FIXED: Check if active OR on cooldown
+        // ✅ During my turn, powers should be enabled (unless already used/on cooldown)
+
+        // Garden Hose
         if (powerManager.isGardenHoseActive()) {
             btnGardenHose.setEnabled(false);
             btnGardenHose.setText("💧\nActive");
-        } else if (powerManager.canUseGardenHose()) {
+            btnGardenHose.setAlpha(0.7f);
+        } else if (powerManager.canUseGardenHose() && !hasAttackedThisTurn) {
             btnGardenHose.setEnabled(true);
             btnGardenHose.setText("💧\nHose");
+            btnGardenHose.setAlpha(1.0f);
         } else {
             btnGardenHose.setEnabled(false);
             int cooldown = powerManager.getGardenHoseCooldown();
-            btnGardenHose.setText("💧\n" + cooldown);
+            btnGardenHose.setText(cooldown > 0 ? "💧\n" + cooldown : "💧\nHose");
+            btnGardenHose.setAlpha(0.5f);
         }
 
         // Nighttime Relocation
-        if (powerManager.canUseNighttimeRelocation()) {
+        if (powerManager.canUseNighttimeRelocation() && !hasAttackedThisTurn) {
             btnNighttimeRelocation.setEnabled(true);
             btnNighttimeRelocation.setText("🌙\nMove");
+            btnNighttimeRelocation.setAlpha(1.0f);
         } else {
             btnNighttimeRelocation.setEnabled(false);
             int cooldown = powerManager.getNighttimeRelocationCooldown();
-            btnNighttimeRelocation.setText("🌙\n" + cooldown);
+            btnNighttimeRelocation.setText(cooldown > 0 ? "🌙\n" + cooldown : "🌙\nMove");
+            btnNighttimeRelocation.setAlpha(0.5f);
         }
 
-        // Tier 2 Power
-        if (powerManager.canUseTier2Power()) {
+        // Tier 2 Power (Spy Drone / Fence / Fertilizer)
+        String icon = "";
+        String name = "";
+        switch (selectedPower) {
+            case "spy_drone":
+                icon = "🐝";
+                name = "Spy";
+                break;
+            case "fence_shield":
+                icon = "🛡️";
+                name = "Fence";
+                break;
+            case "fertilizer":
+                icon = "🌱";
+                name = "Heal";
+                break;
+        }
+
+        if (powerManager.canUseTier2Power() && !hasAttackedThisTurn) {
             btnTier2Power.setEnabled(true);
-            switch (selectedPower) {
-                case "spy_drone":
-                    btnTier2Power.setText("🐝\nSpy");
-                    break;
-                case "fence_shield":
-                    btnTier2Power.setText("🛡️\nFence");
-                    break;
-                case "fertilizer":
-                    btnTier2Power.setText("🌱\nHeal");
-                    break;
-            }
+            btnTier2Power.setText(icon + "\n" + name);
+            btnTier2Power.setAlpha(1.0f);
         } else {
             btnTier2Power.setEnabled(false);
-            String icon = "";
-            switch (selectedPower) {
-                case "spy_drone": icon = "🐝"; break;
-                case "fence_shield": icon = "🛡️"; break;
-                case "fertilizer": icon = "🌱"; break;
-            }
             int cooldown = powerManager.getTier2PowerCooldown();
-            btnTier2Power.setText(cooldown > 0 ? icon + "\n" + cooldown : icon + "\nReady");
+            btnTier2Power.setText(cooldown > 0 ? icon + "\n" + cooldown : icon + "\n" + name);
+            btnTier2Power.setAlpha(0.5f);
         }
     }
 
@@ -1342,20 +1368,123 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
     }
 
     private void handleNighttimeRelocation(SetupActivity.UnitPosition unit) {
+        // Store original unit for later
+        final SetupActivity.UnitPosition selectedUnit = unit;
+
         new androidx.appcompat.app.AlertDialog.Builder(this)
                 .setTitle("🌙 Move " + unit.type)
                 .setMessage("Choose direction:")
-                .setPositiveButton("⬆️ Up", (dialog, which) -> moveUnit(unit, -1, 0))
-                .setNeutralButton("⬇️ Down", (dialog, which) -> moveUnit(unit, 1, 0))
-                .setNegativeButton("Cancel", (dialog, which) -> cancelPowerMode())
+                .setPositiveButton("⬆️ Up", (dialog, which) -> {
+                    moveUnitAndReturn(selectedUnit, -1, 0);
+                })
+                .setNegativeButton("⬇️ Down", (dialog, which) -> {
+                    moveUnitAndReturn(selectedUnit, 1, 0);
+                })
+                .setNeutralButton("Cancel", (dialog, which) -> {
+                    cancelPowerMode();
+                })
                 .show();
 
-        new androidx.appcompat.app.AlertDialog.Builder(this)
-                .setMessage("Or:")
-                .setPositiveButton("⬅️ Left", (dialog, which) -> moveUnit(unit, 0, -1))
-                .setNeutralButton("➡️ Right", (dialog, which) -> moveUnit(unit, 0, 1))
-                .setNegativeButton("Cancel", (dialog, which) -> cancelPowerMode())
-                .show();
+        // Show second dialog for left/right after a small delay
+        new Handler().postDelayed(() -> {
+            new androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("🌙 Move " + unit.type)
+                    .setMessage("Or choose horizontal:")
+                    .setPositiveButton("⬅️ Left", (dialog, which) -> {
+                        moveUnitAndReturn(selectedUnit, 0, -1);
+                    })
+                    .setNegativeButton("➡️ Right", (dialog, which) -> {
+                        moveUnitAndReturn(selectedUnit, 0, 1);
+                    })
+                    .setNeutralButton("Cancel", (dialog, which) -> {
+                        cancelPowerMode();
+                    })
+                    .show();
+        }, 100);
+    }
+
+    private void moveUnitAndReturn(SetupActivity.UnitPosition unit, int rowOffset, int colOffset) {
+        int newRow = unit.row + rowOffset;
+        int newCol = unit.col + colOffset;
+
+        // Validate move
+        if (newRow < 0 || newRow >= 8 || newCol < 0 || newCol >= 8) {
+            Toast.makeText(this, "Can't move outside grid!", Toast.LENGTH_SHORT).show();
+            cancelPowerMode();
+            return;
+        }
+
+        // Check if new position is occupied
+        if (findUnitAtPosition(newRow, newCol) != null) {
+            Toast.makeText(this, "Cell is occupied!", Toast.LENGTH_SHORT).show();
+            cancelPowerMode();
+            return;
+        }
+
+        // Store old position
+        int oldRow = unit.row;
+        int oldCol = unit.col;
+
+        // Clear old cell
+        ImageView oldCell = playerCells[oldRow][oldCol];
+        oldCell.setImageDrawable(null);
+        oldCell.setTag(null);
+        oldCell.setBackgroundColor(Color.parseColor("#8FBC8F"));
+
+        // Update unit position
+        unit.row = newRow;
+        unit.col = newCol;
+
+        // Update new cell
+        ImageView newCell = playerCells[newRow][newCol];
+        newCell.setImageResource(getUnitIcon(unit.type));
+        newCell.setTag(unit);
+
+        // Animate move
+        newCell.setScaleX(0.3f);
+        newCell.setScaleY(0.3f);
+        newCell.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(400)
+                .start();
+
+        // Use power
+        powerManager.useNighttimeRelocation();
+
+        Toast.makeText(this, "🌙 " + unit.type + " moved from (" + oldRow + "," + oldCol +
+                ") to (" + newRow + "," + newCol + ")!", Toast.LENGTH_LONG).show();
+
+        // ✅ Save power usage to Firebase
+        FirebaseGameRoom.LastActionData powerAction = new FirebaseGameRoom.LastActionData();
+        powerAction.type = "power_used";
+        powerAction.player = myPlayerKey;
+        powerAction.timestamp = System.currentTimeMillis();
+
+        firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                snapshot.getRef().child("lastAction").child("powerType").setValue("nighttime_relocation");
+                snapshot.getRef().removeEventListener(this);
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {}
+        });
+
+        firebaseManager.sendAction(roomCode, powerAction);
+
+        // ✅ FIX: Return to enemy garden after move
+        cancelPowerMode();
+        updatePowerButtons();
+
+        // Switch back to enemy garden
+        runOnUiThread(() -> {
+            playerGardenSection.setVisibility(View.GONE);
+            enemyGardenSection.setVisibility(View.VISIBLE);
+            tvTurnIndicator.setText("YOUR TURN - ATTACK!");
+            tvTurnIndicator.setTextColor(getColor(android.R.color.holo_green_dark));
+        });
     }
 
     private void moveUnit(SetupActivity.UnitPosition unit, int rowOffset, int colOffset) {
@@ -1432,27 +1561,81 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
         for (int row = centerRow - 1; row <= centerRow + 1; row++) {
             for (int col = centerCol - 1; col <= centerCol + 1; col++) {
-                if (row >= 0 && row < 8 && col >= 0 && col < 8 && !enemyRevealedCells[row][col]) {
-                    enemyRevealedCells[row][col] = true;
+                if (row >= 0 && row < 8 && col >= 0 && col < 8) {
                     ImageView cell = enemyCells[row][col];
-                    cell.setBackgroundColor(Color.parseColor("#C5E1A5"));
-                    cell.setAlpha(1f);
-                    revealed++;
+
+                    if (!enemyRevealedCells[row][col]) {
+                        enemyRevealedCells[row][col] = true;
+                        revealed++;
+
+                        // ✅ FIX: Check for units in enemy grid
+                        // Note: We don't have access to enemy units directly in multiplayer
+                        // So we reveal cells but don't show unit icons (fog of war)
+                        // Units will be revealed when hit
+
+                        cell.setBackgroundColor(Color.parseColor("#C5E1A5")); // Light green (revealed)
+                        cell.setAlpha(1f);
+
+                        // ✅ Animation for revealed cell
+                        cell.animate()
+                                .scaleX(1.1f)
+                                .scaleY(1.1f)
+                                .setDuration(200)
+                                .withEndAction(() -> {
+                                    cell.animate()
+                                            .scaleX(1f)
+                                            .scaleY(1f)
+                                            .setDuration(200)
+                                            .start();
+                                })
+                                .start();
+                    }
                 }
             }
         }
 
+        // ✅ Use the power
         powerManager.useTier2Power();
-        cancelPowerMode();
-        updatePowerButtons();
 
         Toast.makeText(this, "🐝 Revealed " + revealed + " cells!", Toast.LENGTH_LONG).show();
+
+        // ✅ Save power usage to Firebase
+        FirebaseGameRoom.LastActionData powerAction = new FirebaseGameRoom.LastActionData();
+        powerAction.type = "power_used";
+        powerAction.player = myPlayerKey;
+        powerAction.timestamp = System.currentTimeMillis();
+
+        firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                snapshot.getRef().child("lastAction").child("powerType").setValue("spy_drone");
+                snapshot.getRef().removeEventListener(this);
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {}
+        });
+
+        firebaseManager.sendAction(roomCode, powerAction);
+
+        // ✅ Exit power mode and update UI
+        cancelPowerMode();
+        updatePowerButtons();
     }
 
     private void cancelPowerMode() {
         isSelectingUnitForPower = false;
         activePowerMode = null;
-        updateTurnIndicator();
+
+        // ✅ FIX: Always return to enemy garden after power mode
+        runOnUiThread(() -> {
+            if (isMyTurn) {
+                playerGardenSection.setVisibility(View.GONE);
+                enemyGardenSection.setVisibility(View.VISIBLE);
+                tvTurnIndicator.setText("YOUR TURN - ATTACK!");
+                tvTurnIndicator.setTextColor(getColor(android.R.color.holo_green_dark));
+            }
+        });
     }
 
     private void showMissOnEnemyGrid(int row, int col) {

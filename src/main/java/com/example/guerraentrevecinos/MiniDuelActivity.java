@@ -356,13 +356,6 @@ public class MiniDuelActivity extends AppCompatActivity {
     private void saveChoiceToFirebase() {
         String choiceKey = isPlayerAttacking ? "attackerChoice" : "defenderChoice";
 
-        Log.d(TAG, "=== SAVING DUEL CHOICE ===");
-        Log.d(TAG, "IsAttacker: " + isPlayerAttacking + ", Choice: " + playerChoice);
-
-        if (isGardenHoseActive && isPlayerAttacking) {
-            Log.d(TAG, "Garden Hose - Second Choice: " + secondChoice);
-        }
-
         firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
@@ -371,9 +364,10 @@ public class MiniDuelActivity extends AppCompatActivity {
                         .addOnSuccessListener(aVoid -> {
                             Log.d(TAG, "✅ " + choiceKey + " saved: " + playerChoice);
 
-                            // ✅ If Garden Hose active and attacking, save second choice too
-                            if (isGardenHoseActive && isPlayerAttacking) {
-                                snapshot.getRef().child("lastAction").child("attackerSecondChoice")
+                            // ✅ If Garden Hose active and attacking, save second choice
+                            if (isGardenHoseActive && isPlayerAttacking && secondChoice != -1) {
+                                snapshot.getRef().child("lastAction")
+                                        .child("attackerSecondChoice")
                                         .setValue(secondChoice)
                                         .addOnSuccessListener(a -> {
                                             Log.d(TAG, "✅ attackerSecondChoice saved: " + secondChoice);
@@ -381,23 +375,13 @@ public class MiniDuelActivity extends AppCompatActivity {
                             }
 
                             new Handler().postDelayed(() -> checkBothChoices(), 500);
-                        })
-                        .addOnFailureListener(e -> {
-                            Log.e(TAG, "❌ Failed to save choice: " + e.getMessage());
-                            runOnUiThread(() -> {
-                                Toast.makeText(MiniDuelActivity.this,
-                                        "Error saving choice. Returning...", Toast.LENGTH_SHORT).show();
-                                finish();
-                            });
                         });
 
                 snapshot.getRef().removeEventListener(this);
             }
 
             @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                Log.e(TAG, "Error: " + error.getMessage());
-            }
+            public void onCancelled(@NonNull DatabaseError error) {}
         });
     }
 

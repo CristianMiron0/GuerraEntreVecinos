@@ -17,7 +17,9 @@ import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.ValueEventListener;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class MultiplayerBattleActivity extends AppCompatActivity {
 
@@ -63,44 +65,228 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
     private String pendingUnitType = "";
     private long lastProcessedActionTimestamp = 0; // Track processed actions
     private boolean iAmAttackerInCurrentDuel = false; // Track role in current duel
+    private List<SetupActivity.UnitPosition> revealedEnemyUnits = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_battle);
 
-        Log.d(TAG, "onCreate started");
+        Log.d(TAG, "═══════════════════════════════════════");
+        Log.d(TAG, "MultiplayerBattleActivity onCreate START");
+        Log.d(TAG, "═══════════════════════════════════════");
 
-        // Get data
-        roomCode = getIntent().getStringExtra("ROOM_CODE");
-        isHost = getIntent().getBooleanExtra("IS_HOST", false);
-        selectedPower = getIntent().getStringExtra("SELECTED_POWER");
-        playerUnits = getIntent().getParcelableArrayListExtra("PLAYER_UNITS");
-        enemyUnits = new ArrayList<>();
+        try {
+            // Get data
+            roomCode = getIntent().getStringExtra("ROOM_CODE");
+            isHost = getIntent().getBooleanExtra("IS_HOST", false);
+            selectedPower = getIntent().getStringExtra("SELECTED_POWER");
+            playerUnits = getIntent().getParcelableArrayListExtra("PLAYER_UNITS");
 
-        myPlayerKey = isHost ? "player1" : "player2";
-        opponentPlayerKey = isHost ? "player2" : "player1";
+            Log.d(TAG, "Room Code: " + roomCode);
+            Log.d(TAG, "Is Host: " + isHost);
+            Log.d(TAG, "Selected Power: " + selectedPower);
+            Log.d(TAG, "Player Units: " + (playerUnits != null ? playerUnits.size() : "NULL"));
 
-        Log.d(TAG, "Room: " + roomCode + ", isHost: " + isHost + ", myKey: " + myPlayerKey);
+            // Validate data
+            if (roomCode == null || playerUnits == null || playerUnits.isEmpty()) {
+                Log.e(TAG, "ERROR: Missing required data!");
+                Toast.makeText(this, "Error loading game data", Toast.LENGTH_LONG).show();
+                finish();
+                return;
+            }
 
-        // Initialize managers
-        firebaseManager = FirebaseManager.getInstance();
-        powerManager = new PowerManager(selectedPower != null ? selectedPower : "spy_drone");
-        abilityManager = new AbilityManager(this);
+            // Initialize empty enemy units
+            enemyUnits = new ArrayList<>();
 
-        // Initialize views
-        initializeViews();
-        setupPowerButtons();
-        createPlayerGrid();
-        createEnemyGrid();
+            myPlayerKey = isHost ? "player1" : "player2";
+            opponentPlayerKey = isHost ? "player2" : "player1";
 
-        // Initialize game state if host
-        if (isHost) {
-            initializeGameState();
+            Log.d(TAG, "My Key: " + myPlayerKey);
+            Log.d(TAG, "Opponent Key: " + opponentPlayerKey);
+
+            // Initialize managers
+            firebaseManager = FirebaseManager.getInstance();
+
+            if (!firebaseManager.isInitialized()) {
+                Log.e(TAG, "ERROR: Firebase not initialized!");
+                Toast.makeText(this, "Firebase connection error", Toast.LENGTH_LONG).show();
+                finish();
+                return;
+            }
+
+            powerManager = new PowerManager(selectedPower != null ? selectedPower : "spy_drone");
+            abilityManager = new AbilityManager(this);
+
+            // Initialize views
+            initializeViews();
+            setupPowerButtons();
+            createPlayerGrid();
+            createEnemyGrid();
+
+            // Initialize game state if host
+            if (isHost) {
+                initializeGameState();
+            }
+
+            // Listen for game updates FIRST
+            listenForGameUpdates();
+
+            // THEN store units and load opponent units
+            // Wait 1 second to ensure listener is ready
+            new Handler().postDelayed(() -> {
+                storeMyUnitsInFirebase();
+                loadOpponentUnits();
+            }, 1000);
+
+            Log.d(TAG, "onCreate completed successfully");
+
+        } catch (Exception e) {
+            Log.e(TAG, "FATAL ERROR in onCreate", e);
+            Toast.makeText(this, "Error starting game: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            finish();
+        }
+    }
+
+    private void loadOpponentUnits() {
+        Log.d(TAG, "════════════════════════════════════════");
+        Log.d(TAG, "loadOpponentUnits START");
+        Log.d(TAG, "Looking for " + opponentPlayerKey + " units");
+        Log.d(TAG, "════════════════════════════════════════");
+
+        firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                DataSnapshot opponentUnitsSnapshot = snapshot.child("units").child(opponentPlayerKey);
+
+                if (!opponentUnitsSnapshot.exists()) {
+                    Log.w(TAG, "⚠️ Opponent units not found yet, will keep listening...");
+                    // Don't remove listener - keep waiting for opponent
+                    return;
+                }
+
+                enemyUnits.clear();
+                int loadedCount = 0;
+
+                for (DataSnapshot unitSnapshot : opponentUnitsSnapshot.getChildren()) {
+                    try {
+                        Integer row = unitSnapshot.child("row").getValue(Integer.class);
+                        Integer col = unitSnapshot.child("col").getValue(Integer.class);
+                        String type = unitSnapshot.child("type").getValue(String.class);
+                        Integer health = unitSnapshot.child("health").getValue(Integer.class);
+
+                        if (row != null && col != null && type != null && health != null) {
+                            SetupActivity.UnitPosition unit = new SetupActivity.UnitPosition(row, col, type, health);
+                            enemyUnits.add(unit);
+                            loadedCount++;
+                            Log.d(TAG, "  ✅ Loaded: " + type + " at (" + row + "," + col + ")");
+                        } else {
+                            Log.w(TAG, "  ⚠️ Incomplete unit data: " + unitSnapshot.getKey());
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "  ❌ Error loading unit: " + e.getMessage());
+                    }
+                }
+
+                Log.d(TAG, "════════════════════════════════════════");
+                Log.d(TAG, "✅ LOADED " + loadedCount + " opponent units");
+                Log.d(TAG, "════════════════════════════════════════");
+
+                if (loadedCount > 0) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(MultiplayerBattleActivity.this,
+                                "Opponent ready! Game starting...",
+                                Toast.LENGTH_SHORT).show();
+                    });
+                }
+
+                // Keep listener active to detect unit updates (health changes, etc.)
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e(TAG, "❌ Failed to load opponent units: " + error.getMessage());
+            }
+        });
+    }
+
+    private void storeMyUnitsInFirebase() {
+        Log.d(TAG, "════════════════════════════════════════");
+        Log.d(TAG, "storeMyUnitsInFirebase START");
+        Log.d(TAG, "Storing " + playerUnits.size() + " units as " + myPlayerKey);
+        Log.d(TAG, "════════════════════════════════════════");
+
+        if (playerUnits == null || playerUnits.isEmpty()) {
+            Log.e(TAG, "ERROR: No units to store!");
+            return;
         }
 
-        // Listen for game updates
-        listenForGameUpdates();
+        firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                if (!snapshot.exists()) {
+                    Log.e(TAG, "ERROR: Room doesn't exist!");
+                    snapshot.getRef().removeEventListener(this);
+                    return;
+                }
+
+                Log.d(TAG, "Room exists, storing units...");
+
+                // Store all units in one batch
+                Map<String, Object> allUnits = new HashMap<>();
+
+                for (int i = 0; i < playerUnits.size(); i++) {
+                    SetupActivity.UnitPosition unit = playerUnits.get(i);
+
+                    Map<String, Object> unitData = new HashMap<>();
+                    unitData.put("row", unit.row);
+                    unitData.put("col", unit.col);
+                    unitData.put("type", unit.type);
+                    unitData.put("health", unit.health);
+
+                    allUnits.put(String.valueOf(i), unitData);
+                }
+
+                // Write all at once
+                snapshot.getRef().child("units").child(myPlayerKey).setValue(allUnits)
+                        .addOnSuccessListener(aVoid -> {
+                            Log.d(TAG, "✅ SUCCESS: Stored all " + playerUnits.size() + " units");
+                            runOnUiThread(() -> {
+                                Toast.makeText(MultiplayerBattleActivity.this,
+                                        "Units ready!", Toast.LENGTH_SHORT).show();
+                            });
+                        })
+                        .addOnFailureListener(e -> {
+                            Log.e(TAG, "❌ FAILED to store units: " + e.getMessage());
+                            e.printStackTrace();
+
+                            runOnUiThread(() -> {
+                                Toast.makeText(MultiplayerBattleActivity.this,
+                                        "Error saving units: " + e.getMessage(),
+                                        Toast.LENGTH_LONG).show();
+                            });
+
+                            // Retry after 2 seconds
+                            new Handler().postDelayed(() -> {
+                                Log.d(TAG, "Retrying unit storage...");
+                                storeMyUnitsInFirebase();
+                            }, 2000);
+                        });
+
+                snapshot.getRef().removeEventListener(this);
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e(TAG, "❌ Firebase error storing units: " + error.getMessage());
+
+                runOnUiThread(() -> {
+                    Toast.makeText(MultiplayerBattleActivity.this,
+                            "Connection error: " + error.getMessage(),
+                            Toast.LENGTH_LONG).show();
+                });
+            }
+        });
     }
 
     private void initializeViews() {
@@ -517,12 +703,15 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                             Integer defenderChoice = lastActionSnapshot.child("defenderChoice").getValue(Integer.class);
                             duelPending = lastActionSnapshot.child("duelPending").getValue(Boolean.class);
 
-                            // NEW: Check for Garden Hose second choice
+                            // ✅ FIX: Check for Garden Hose second choice
                             Integer attackerSecond = lastActionSnapshot.child("attackerSecondChoice").getValue(Integer.class);
+                            Boolean gardenHoseActive = lastActionSnapshot.child("gardenHoseActive").getValue(Boolean.class);
 
                             Log.d(TAG, "Checking choices - Attacker: " + attackerChoice +
                                     (attackerSecond != null ? " & " + attackerSecond : "") +
-                                    ", Defender: " + defenderChoice + ", Waiting: " + waitingForDuelResult);
+                                    ", Defender: " + defenderChoice +
+                                    ", Waiting: " + waitingForDuelResult +
+                                    ", GardenHose: " + gardenHoseActive);
 
                             if (attackerChoice != null && defenderChoice != null &&
                                     (duelPending == null || !duelPending)) {
@@ -549,26 +738,37 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                                 if (timestamp != null && timestamp > lastProcessedActionTimestamp) {
                                     lastProcessedActionTimestamp = timestamp;
 
-                                    // FIX: Calculate result with Garden Hose support
+                                    // ✅ FIX: Calculate result with Garden Hose support
                                     boolean wasHit;
 
                                     // Check if attacker used Garden Hose (has second choice)
-                                    if (attackerSecond != null) {
+                                    if (attackerSecond != null && gardenHoseActive != null && gardenHoseActive) {
                                         // Garden Hose: Hit if defender matches EITHER choice
                                         wasHit = (attackerChoice.equals(defenderChoice) ||
                                                 attackerSecond.equals(defenderChoice));
-                                        Log.d(TAG, "Garden Hose Active - Choices: " + attackerChoice +
-                                                " & " + attackerSecond + " vs Defender: " + defenderChoice);
+
+                                        Log.d(TAG, "🌊 Garden Hose CALCULATION");
+                                        Log.d(TAG, "  Attacker Choice 1: " + attackerChoice);
+                                        Log.d(TAG, "  Attacker Choice 2: " + attackerSecond);
+                                        Log.d(TAG, "  Defender Choice: " + defenderChoice);
+                                        Log.d(TAG, "  Match with Choice 1? " + attackerChoice.equals(defenderChoice));
+                                        Log.d(TAG, "  Match with Choice 2? " + attackerSecond.equals(defenderChoice));
+                                        Log.d(TAG, "  FINAL RESULT: " + (wasHit ? "HIT (DESTROYED)" : "MISS (DAMAGED)"));
                                     } else {
                                         // Normal: Must match exactly
                                         wasHit = attackerChoice.equals(defenderChoice);
+
+                                        Log.d(TAG, "⚔️ Normal CALCULATION");
+                                        Log.d(TAG, "  Attacker: " + attackerChoice);
+                                        Log.d(TAG, "  Defender: " + defenderChoice);
+                                        Log.d(TAG, "  FINAL RESULT: " + (wasHit ? "HIT (DESTROYED)" : "MISS (DAMAGED)"));
                                     }
 
                                     Integer targetRow = lastActionSnapshot.child("targetRow").getValue(Integer.class);
                                     Integer targetCol = lastActionSnapshot.child("targetCol").getValue(Integer.class);
 
-                                    Log.d(TAG, "Choices match: " + wasHit + " - Processing result as " +
-                                            (iAmAttackerInCurrentDuel ? "ATTACKER" : "DEFENDER"));
+                                    Log.d(TAG, "Final result: " + (wasHit ? "HIT" : "MISS") +
+                                            " - Processing as " + (iAmAttackerInCurrentDuel ? "ATTACKER" : "DEFENDER"));
 
                                     if (targetRow != null && targetCol != null) {
                                         if (iAmAttackerInCurrentDuel) {
@@ -649,6 +849,60 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
             Toast.makeText(this, "Wait for current action to complete!", Toast.LENGTH_SHORT).show();
             return;
         }
+
+        // ========================================
+        // ✅ FIX: CHECK FOR DOG FEAR BEFORE ATTACKING
+        // ========================================
+        final int finalRow = row;
+        final int finalCol = col;
+
+        firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                // Check if opponent has a dog with fear at this position
+                Boolean hasFear = snapshot.child("dogFearUnits")
+                        .child(opponentPlayerKey)
+                        .child(finalRow + "," + finalCol)
+                        .getValue(Boolean.class);
+
+                if (hasFear != null && hasFear) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(MultiplayerBattleActivity.this,
+                                "🐕 Dog's FEAR prevents attack! Choose another target.",
+                                Toast.LENGTH_LONG).show();
+                    });
+
+                    // Clear the fear after blocking one attack
+                    snapshot.getRef().child("dogFearUnits")
+                            .child(opponentPlayerKey)
+                            .child(finalRow + "," + finalCol)
+                            .removeValue()
+                            .addOnSuccessListener(aVoid -> {
+                                Log.d(TAG, "Dog fear cleared after blocking attack");
+                            });
+
+                    snapshot.getRef().removeEventListener(this);
+                    return;
+                }
+
+                // No fear - proceed with normal attack
+                snapshot.getRef().removeEventListener(this);
+                proceedWithAttack(finalRow, finalCol);
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e(TAG, "Error checking dog fear: " + error.getMessage());
+                runOnUiThread(() -> {
+                    Toast.makeText(MultiplayerBattleActivity.this,
+                            "Connection error. Try again.", Toast.LENGTH_SHORT).show();
+                });
+            }
+        });
+    }
+
+    private void proceedWithAttack(int row, int col) {
+        Log.d(TAG, "Proceeding with attack at (" + row + "," + col + ")");
 
         // ========================================
         // MARK ATTACK IN PROGRESS
@@ -743,7 +997,6 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                         (usingGardenHose ? " 💧 Garden Hose!" : ""),
                 Toast.LENGTH_SHORT).show();
     }
-
 
     // FIX: Pass Garden Hose status to MiniDuel
     private void launchMiniDuel(int row, int col, String unitType, boolean isPlayerAttacking) {
@@ -959,10 +1212,38 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
                         if (teleported) {
                             unit.health = 1; // Cat survives with 1 HP
-                            Toast.makeText(this, "🐱 Cat teleported to safety!",
+
+                            final int newRow = unit.row;
+                            final int newCol = unit.col;
+
+                            Toast.makeText(this, "🐱 Cat teleported to safety at (" + newRow + "," + newCol + ")!",
                                     Toast.LENGTH_LONG).show();
 
-                            // Clear choices and continue
+                            // ✅ SYNC CAT TELEPORT TO FIREBASE
+                            firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+                                @Override
+                                public void onDataChange(@NonNull DataSnapshot snapshot) {
+                                    // Save cat's new position
+                                    snapshot.getRef().child("catTeleports")
+                                            .child(myPlayerKey)
+                                            .child("row").setValue(newRow);
+
+                                    snapshot.getRef().child("catTeleports")
+                                            .child(myPlayerKey)
+                                            .child("col").setValue(newCol);
+
+                                    snapshot.getRef().child("catTeleports")
+                                            .child(myPlayerKey)
+                                            .child("survived").setValue(true);
+
+                                    snapshot.getRef().removeEventListener(this);
+                                }
+
+                                @Override
+                                public void onCancelled(@NonNull DatabaseError error) {}
+                            });
+
+                            // Update opponent's view
                             new Handler().postDelayed(this::clearChoices, 2000);
                             return; // Exit - cat escaped
                         }
@@ -994,7 +1275,6 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                 // ========================================
                 else {
                     unit.health--;
-
                     ImageView cell = playerCells[unit.row][unit.col];
 
                     // ✅ ROSE COLOR CHANGE ABILITY (After being damaged)
@@ -1028,14 +1308,29 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                     Toast.makeText(this, "🛡️ Your " + unit.type + " was damaged! (1 HP left)",
                             Toast.LENGTH_LONG).show();
 
-                    // ✅ DOG FEAR ABILITY (After being damaged to 1 HP)
-                    if (unit.type.equals("dog") && !unit.abilityUsed) {
+                    // ✅ DOG FEAR FIX: Activate and sync to Firebase
+                    if (unit.type.equals("dog") && unit.health == 1 && !unit.abilityUsed) {
                         Log.d(TAG, "Dog ability triggered - activating fear");
 
-                        // Small delay to let damage animation finish first
-                        new Handler().postDelayed(() -> {
-                            abilityManager.activateDogFear(unit, cell);
-                        }, 400);
+                        // Activate locally
+                        abilityManager.activateDogFear(unit, cell);
+
+                        // ✅ SYNC TO FIREBASE: Tell opponent this dog has fear active
+                        firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+                            @Override
+                            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                                // Save dog fear state
+                                snapshot.getRef().child("dogFearUnits")
+                                        .child(opponentPlayerKey) // My units from opponent's perspective
+                                        .child(unit.row + "," + unit.col)
+                                        .setValue(true);
+
+                                snapshot.getRef().removeEventListener(this);
+                            }
+
+                            @Override
+                            public void onCancelled(@NonNull DatabaseError error) {}
+                        });
                     }
                 }
             } else {
@@ -1158,6 +1453,8 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
     private void updateTurnIndicator() {
         runOnUiThread(() -> {
+            Log.d(TAG, "updateTurnIndicator - isMyTurn: " + isMyTurn);
+
             if (isMyTurn) {
                 tvTurnIndicator.setText("YOUR TURN - ATTACK!");
                 tvTurnIndicator.setTextColor(getColor(android.R.color.holo_green_dark));
@@ -1169,6 +1466,11 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                 enemyGardenSection.setVisibility(View.GONE);
                 playerGardenSection.setVisibility(View.VISIBLE);
             }
+
+            // ✅ FIX: Update power buttons AFTER turn indicator
+            updatePowerButtons();
+
+            logGameState("Turn Indicator Updated");
         });
     }
 
@@ -1221,38 +1523,33 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
     }
 
     private void updatePowerButtons() {
-        // ✅ FIX: Only disable powers during actual duel, not during attack turn
-        if (!isMyTurn) {
-            // Disable all during opponent's turn
-            btnGardenHose.setEnabled(false);
-            btnGardenHose.setAlpha(0.5f);
-            btnNighttimeRelocation.setEnabled(false);
-            btnNighttimeRelocation.setAlpha(0.5f);
-            btnTier2Power.setEnabled(false);
-            btnTier2Power.setAlpha(0.5f);
-            return;
-        }
+        Log.d(TAG, "updatePowerButtons called - isMyTurn: " + isMyTurn +
+                ", hasAttacked: " + hasAttackedThisTurn +
+                ", gardenHoseCooldown: " + powerManager.getGardenHoseCooldown());
 
-        // ✅ During my turn, powers should be enabled (unless already used/on cooldown)
+        // ✅ FIX: Only disable during opponent's turn OR if already attacked
+        boolean canUsePowers = isMyTurn && !hasAttackedThisTurn && !waitingForDuelResult;
 
         // Garden Hose
         if (powerManager.isGardenHoseActive()) {
             btnGardenHose.setEnabled(false);
             btnGardenHose.setText("💧\nActive");
             btnGardenHose.setAlpha(0.7f);
-        } else if (powerManager.canUseGardenHose() && !hasAttackedThisTurn) {
+        } else if (powerManager.canUseGardenHose() && canUsePowers) {
             btnGardenHose.setEnabled(true);
             btnGardenHose.setText("💧\nHose");
             btnGardenHose.setAlpha(1.0f);
+            Log.d(TAG, "Garden Hose ENABLED");
         } else {
             btnGardenHose.setEnabled(false);
             int cooldown = powerManager.getGardenHoseCooldown();
             btnGardenHose.setText(cooldown > 0 ? "💧\n" + cooldown : "💧\nHose");
             btnGardenHose.setAlpha(0.5f);
+            Log.d(TAG, "Garden Hose DISABLED - Cooldown: " + cooldown + ", canUsePowers: " + canUsePowers);
         }
 
         // Nighttime Relocation
-        if (powerManager.canUseNighttimeRelocation() && !hasAttackedThisTurn) {
+        if (powerManager.canUseNighttimeRelocation() && canUsePowers) {
             btnNighttimeRelocation.setEnabled(true);
             btnNighttimeRelocation.setText("🌙\nMove");
             btnNighttimeRelocation.setAlpha(1.0f);
@@ -1263,7 +1560,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
             btnNighttimeRelocation.setAlpha(0.5f);
         }
 
-        // Tier 2 Power (Spy Drone / Fence / Fertilizer)
+        // Tier 2 Power
         String icon = "";
         String name = "";
         switch (selectedPower) {
@@ -1281,7 +1578,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                 break;
         }
 
-        if (powerManager.canUseTier2Power() && !hasAttackedThisTurn) {
+        if (powerManager.canUseTier2Power() && canUsePowers) {
             btnTier2Power.setEnabled(true);
             btnTier2Power.setText(icon + "\n" + name);
             btnTier2Power.setAlpha(1.0f);
@@ -1568,15 +1865,28 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                         enemyRevealedCells[row][col] = true;
                         revealed++;
 
-                        // ✅ FIX: Check for units in enemy grid
-                        // Note: We don't have access to enemy units directly in multiplayer
-                        // So we reveal cells but don't show unit icons (fog of war)
-                        // Units will be revealed when hit
+                        // ✅ FIX: Check if there's an enemy unit here (now we have the data!)
+                        boolean hasUnit = false;
+                        for (SetupActivity.UnitPosition unit : enemyUnits) {
+                            if (unit.row == row && unit.col == col && unit.health > 0) {
+                                // Found a unit! Show it
+                                cell.setBackgroundColor(Color.parseColor("#FFE082")); // Yellow
+                                cell.setImageResource(getUnitIcon(unit.type));
+                                cell.setAlpha(1f);
+                                hasUnit = true;
 
-                        cell.setBackgroundColor(Color.parseColor("#C5E1A5")); // Light green (revealed)
-                        cell.setAlpha(1f);
+                                Log.d(TAG, "Spy Drone revealed unit: " + unit.type + " at (" + row + "," + col + ")");
+                                break;
+                            }
+                        }
 
-                        // ✅ Animation for revealed cell
+                        if (!hasUnit) {
+                            // Empty cell
+                            cell.setBackgroundColor(Color.parseColor("#C5E1A5")); // Light green
+                            cell.setAlpha(1f);
+                        }
+
+                        // Animation
                         cell.animate()
                                 .scaleX(1.1f)
                                 .scaleY(1.1f)
@@ -1594,12 +1904,11 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
             }
         }
 
-        // ✅ Use the power
         powerManager.useTier2Power();
 
         Toast.makeText(this, "🐝 Revealed " + revealed + " cells!", Toast.LENGTH_LONG).show();
 
-        // ✅ Save power usage to Firebase
+        // Save to Firebase
         FirebaseGameRoom.LastActionData powerAction = new FirebaseGameRoom.LastActionData();
         powerAction.type = "power_used";
         powerAction.player = myPlayerKey;
@@ -1618,7 +1927,6 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
         firebaseManager.sendAction(roomCode, powerAction);
 
-        // ✅ Exit power mode and update UI
         cancelPowerMode();
         updatePowerButtons();
     }
@@ -1657,5 +1965,23 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         if (roomListener != null) {
             firebaseManager.removeRoomListener(roomCode, roomListener);
         }
+    }
+
+    private void logGameState(String event) {
+        Log.d(TAG, "════════════════════════════════════════");
+        Log.d(TAG, "EVENT: " + event);
+        Log.d(TAG, "Room: " + roomCode);
+        Log.d(TAG, "I am: " + (isHost ? "HOST (Player1)" : "GUEST (Player2)"));
+        Log.d(TAG, "My Key: " + myPlayerKey);
+        Log.d(TAG, "Opponent Key: " + opponentPlayerKey);
+        Log.d(TAG, "Is My Turn: " + isMyTurn);
+        Log.d(TAG, "Has Attacked: " + hasAttackedThisTurn);
+        Log.d(TAG, "Waiting For Duel: " + waitingForDuelResult);
+        Log.d(TAG, "Round: " + currentRound);
+        Log.d(TAG, "Player Units: " + playerUnits.size());
+        Log.d(TAG, "Enemy Units: " + enemyUnits.size());
+        Log.d(TAG, "Garden Hose Active: " + powerManager.isGardenHoseActive());
+        Log.d(TAG, "Garden Hose Cooldown: " + powerManager.getGardenHoseCooldown());
+        Log.d(TAG, "════════════════════════════════════════");
     }
 }

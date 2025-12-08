@@ -399,8 +399,7 @@ public class BattleActivity extends AppCompatActivity {
 
         if (unit != null) {
             if (unit.type.equals("cat") && !unit.abilityUsed) {
-                boolean teleported = abilityManager.activateCatTeleport(
-                        unit, enemyCells, aiUnits, false);
+                boolean teleported = abilityManager.activateCatTeleport(unit, playerUnits);
                 if (teleported) {
                     unit.health = 1;
                     enemyRevealedCells[unit.row][unit.col] = true;
@@ -492,8 +491,7 @@ public class BattleActivity extends AppCompatActivity {
 
         } else if (unit.health <= 0) {
             if (unit.type.equals("cat") && !unit.abilityUsed) {
-                boolean teleported = abilityManager.activateCatTeleport(
-                        unit, playerCells, playerUnits, true);
+                boolean teleported = abilityManager.activateCatTeleport(unit, playerUnits);
                 if (teleported) {
                     unit.health = 1;
                     return;

@@ -1,9 +1,13 @@
 package com.example.guerraentrevecinos;
 
 import android.content.Context;
+import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.Toast;
+
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 public class AbilityManager {
@@ -95,87 +99,70 @@ public class AbilityManager {
                 Toast.LENGTH_LONG).show();
     }
 
-    // ✅ Cat: Teleport to random empty cell
-    public boolean activateCatTeleport(SetupActivity.UnitPosition cat,
-                                       ImageView[][] gridCells,
-                                       java.util.List<SetupActivity.UnitPosition> allUnits,
-                                       boolean isPlayerGrid) {
-        if (cat.abilityUsed) return false;
+    // Cat: Teleport to random empty cell
+    public boolean activateCatTeleport(
+            SetupActivity.UnitPosition cat,
+            List<SetupActivity.UnitPosition> allUnits) {
 
-        // Find empty cells
-        java.util.List<int[]> emptyCells = new java.util.ArrayList<>();
+        Log.d("AbilityManager", "====================================");
+        Log.d("AbilityManager", "CAT TELEPORT ACTIVATED");
+        Log.d("AbilityManager", "Current position: (" + cat.row + "," + cat.col + ")");
+        Log.d("AbilityManager", "Current health: " + cat.health);
+        Log.d("AbilityManager", "Ability used before: " + cat.abilityUsed);
+        Log.d("AbilityManager", "====================================");
+
+        if (cat.abilityUsed) {
+            Log.w("AbilityManager", "❌ Cat ability already used!");
+            return false;
+        }
+
+        // Find all empty cells
+        List<int[]> emptyCells = new ArrayList<>();
+
         for (int row = 0; row < 8; row++) {
             for (int col = 0; col < 8; col++) {
+                // Check if cell is empty (no unit at this position)
                 boolean isEmpty = true;
+
                 for (SetupActivity.UnitPosition unit : allUnits) {
                     if (unit.row == row && unit.col == col && unit.health > 0) {
                         isEmpty = false;
                         break;
                     }
                 }
-                if (isEmpty && !(row == cat.row && col == cat.col)) {
+
+                if (isEmpty) {
                     emptyCells.add(new int[]{row, col});
                 }
             }
         }
 
+        Log.d("AbilityManager", "Found " + emptyCells.size() + " empty cells");
+
         if (emptyCells.isEmpty()) {
-            Toast.makeText(context, "🐱 No space to teleport!", Toast.LENGTH_SHORT).show();
+            Log.e("AbilityManager", "❌ CAT TELEPORT FAILED - No empty cells available!");
             return false;
         }
 
         // Pick random empty cell
-        int[] newPos = emptyCells.get(random.nextInt(emptyCells.size()));
-        int oldRow = cat.row;
-        int oldCol = cat.col;
-        int newRow = newPos[0];
-        int newCol = newPos[1];
+        Random random = new Random();
+        int[] newPosition = emptyCells.get(random.nextInt(emptyCells.size()));
+        int newRow = newPosition[0];
+        int newCol = newPosition[1];
 
-        ImageView oldCell = gridCells[oldRow][oldCol];
-        ImageView newCell = gridCells[newRow][newCol];
+        Log.d("AbilityManager", "Selected teleport destination: (" + newRow + "," + newCol + ")");
 
-        // Fade out animation
-        oldCell.animate()
-                .alpha(0f)
-                .scaleX(0.3f)
-                .scaleY(0.3f)
-                .rotation(180f)
-                .setDuration(400)
-                .withEndAction(() -> {
-                    // Clear old cell
-                    oldCell.setImageDrawable(null);
-                    oldCell.setTag(null);
-                    oldCell.setAlpha(1f);
-                    oldCell.setScaleX(1f);
-                    oldCell.setScaleY(1f);
-                    oldCell.setRotation(0f);
+        // Update cat's position
+        cat.row = newRow;
+        cat.col = newCol;
+        cat.abilityUsed = true;
+        cat.health = 1; // Cat survives with 1 HP
 
-                    // Update position
-                    cat.row = newRow;
-                    cat.col = newCol;
-                    cat.abilityUsed = true;
-
-                    // Update new cell
-                    newCell.setImageResource(R.drawable.cat_icon);
-                    newCell.setTag(cat);
-                    newCell.setAlpha(0f);
-                    newCell.setScaleX(0.3f);
-                    newCell.setScaleY(0.3f);
-                    newCell.setRotation(180f);
-
-                    // Fade in animation
-                    newCell.animate()
-                            .alpha(1f)
-                            .scaleX(1f)
-                            .scaleY(1f)
-                            .rotation(360f)
-                            .setDuration(400)
-                            .start();
-
-                    Toast.makeText(context, "🐱 Cat teleported to (" + newRow + "," + newCol + ")!",
-                            Toast.LENGTH_LONG).show();
-                })
-                .start();
+        Log.d("AbilityManager", "✅ CAT TELEPORTED SUCCESSFULLY");
+        Log.d("AbilityManager", "   New position: (" + cat.row + "," + cat.col + ")");
+        Log.d("AbilityManager", "   New health: " + cat.health);
+        Log.d("AbilityManager", "   Ability now used: " + cat.abilityUsed);
+        Log.d("AbilityManager", "====================================");
 
         return true;
     }

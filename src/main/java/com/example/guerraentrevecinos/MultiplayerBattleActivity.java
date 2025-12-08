@@ -588,7 +588,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                 DataSnapshot opponentUnitsSnapshot = snapshot.child("units").child(opponentPlayerKey);
                 if (opponentUnitsSnapshot.exists() && enemyUnits != null && !enemyUnits.isEmpty()) {
 
-                    // Check ALL units, not just cats - we need to rebuild enemy unit list
+                    // Rebuild enemy units from Firebase
                     List<SetupActivity.UnitPosition> updatedEnemyUnits = new ArrayList<>();
 
                     for (DataSnapshot unitSnap : opponentUnitsSnapshot.getChildren()) {
@@ -597,16 +597,16 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                         Integer col = unitSnap.child("col").getValue(Integer.class);
                         Integer health = unitSnap.child("health").getValue(Integer.class);
 
-                        if (type != null && row != null && col != null && health != null) {
+                        if (type != null && row != null && col != null && health != null && health > 0) {
                             updatedEnemyUnits.add(new SetupActivity.UnitPosition(row, col, type, health));
                         }
                     }
 
-                    // Now compare with our local enemyUnits to detect cat movement
+                    // Check for cat changes
                     for (SetupActivity.UnitPosition updatedUnit : updatedEnemyUnits) {
                         if ("cat".equals(updatedUnit.type)) {
 
-                            // Find the cat in our OLD list
+                            // Find old cat in our local list
                             SetupActivity.UnitPosition oldCat = null;
                             for (SetupActivity.UnitPosition localUnit : enemyUnits) {
                                 if ("cat".equals(localUnit.type) && localUnit.health > 0) {
@@ -615,7 +615,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                                 }
                             }
 
-                            // Did position change?
+                            // Cat moved?
                             if (oldCat != null &&
                                     (oldCat.row != updatedUnit.row || oldCat.col != updatedUnit.col)) {
 
@@ -623,45 +623,34 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                                 final int oldCol = oldCat.col;
                                 final int newRow = updatedUnit.row;
                                 final int newCol = updatedUnit.col;
+                                final SetupActivity.UnitPosition finalUpdatedUnit = updatedUnit;
 
-                                Log.d(TAG, "🐱 ENEMY CAT MOVED DETECTED!");
-                                Log.d(TAG, "   Old: (" + oldRow + "," + oldCol + ")");
-                                Log.d(TAG, "   New: (" + newRow + "," + newCol + ")");
-                                Log.d(TAG, "   Revealed at old: " + enemyRevealedCells[oldRow][oldCol]);
-                                Log.d(TAG, "   Revealed at new: " + enemyRevealedCells[newRow][newCol]);
+                                Log.d(TAG, "🐱 ENEMY CAT TELEPORTED!");
+                                Log.d(TAG, "   From: (" + oldRow + "," + oldCol + ")");
+                                Log.d(TAG, "   To: (" + newRow + "," + newCol + ")");
 
-                                // Update our local list FIRST
-                                enemyUnits = updatedEnemyUnits;
-
-                                // Update UI on main thread
                                 runOnUiThread(() -> {
-                                    Log.d(TAG, "Updating enemy grid UI for cat teleport");
-
-                                    // 1. Clear old position
+                                    // Clear old position
                                     ImageView oldCell = enemyCells[oldRow][oldCol];
                                     oldCell.setImageDrawable(null);
                                     oldCell.setTag(null);
 
                                     if (enemyRevealedCells[oldRow][oldCol]) {
-                                        oldCell.setBackgroundColor(Color.parseColor("#C5E1A5")); // Empty revealed
-                                        Log.d(TAG, "Old cell was revealed, showing as empty");
+                                        oldCell.setBackgroundColor(Color.parseColor("#C5E1A5"));
                                     } else {
-                                        oldCell.setBackgroundColor(Color.parseColor("#999999")); // Fog
-                                        Log.d(TAG, "Old cell was fog, keeping as fog");
+                                        oldCell.setBackgroundColor(Color.parseColor("#999999"));
                                     }
 
-                                    // 2. Show at new position
+                                    // Show at new position
                                     ImageView newCell = enemyCells[newRow][newCol];
-                                    enemyRevealedCells[newRow][newCol] = true; // ✅ Mark as revealed
+                                    enemyRevealedCells[newRow][newCol] = true;
 
-                                    newCell.setBackgroundColor(Color.parseColor("#FFA500")); // Orange
+                                    newCell.setBackgroundColor(Color.parseColor("#FFA500"));
                                     newCell.setImageResource(R.drawable.cat_icon);
-                                    newCell.setTag(updatedUnit);
+                                    newCell.setTag(finalUpdatedUnit);
                                     newCell.setAlpha(1f);
 
-                                    Log.d(TAG, "New cell updated with cat icon");
-
-                                    // 3. Animate
+                                    // Animate
                                     newCell.setScaleX(0.1f);
                                     newCell.setScaleY(0.1f);
                                     newCell.setRotation(0f);
@@ -684,25 +673,63 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                                     Toast.makeText(MultiplayerBattleActivity.this,
                                             "🐱 Enemy cat teleported to (" + newRow + "," + newCol + ")!",
                                             Toast.LENGTH_LONG).show();
-
-                                    Log.d(TAG, "UI update complete");
                                 });
 
-                                verifyCatPosition(newRow, newCol, "After cat teleport");
-                                verifyCatPosition(oldRow, oldCol, "Old position after clear");
-
-                                break; // Found the cat, stop checking
+                                break;
                             }
                         }
                     }
 
-                    // IMPORTANT: Update our enemy units list even if no cat moved
-                    // This keeps it in sync with Firebase
-                    if (updatedEnemyUnits.size() != enemyUnits.size() ||
-                            !updatedEnemyUnits.equals(enemyUnits)) {
-                        Log.d(TAG, "Updating enemy units list from Firebase");
-                        enemyUnits = updatedEnemyUnits;
+                    // ✅ NEW: Check if cat was removed (died after teleport)
+                    SetupActivity.UnitPosition oldCat = null;
+                    for (SetupActivity.UnitPosition localUnit : enemyUnits) {
+                        if ("cat".equals(localUnit.type) && localUnit.health > 0) {
+                            oldCat = localUnit;
+                            break;
+                        }
                     }
+
+                    // Cat existed before but not now = died
+                    if (oldCat != null) {
+                        boolean catStillExists = false;
+                        for (SetupActivity.UnitPosition u : updatedEnemyUnits) {
+                            if ("cat".equals(u.type)) {
+                                catStillExists = true;
+                                break;
+                            }
+                        }
+
+                        if (!catStillExists) {
+                            final int deadCatRow = oldCat.row;
+                            final int deadCatCol = oldCat.col;
+
+                            Log.d(TAG, "🐱💀 ENEMY CAT DIED at (" + deadCatRow + "," + deadCatCol + ")");
+
+                            runOnUiThread(() -> {
+                                ImageView deadCell = enemyCells[deadCatRow][deadCatCol];
+
+                                // Only update if cell shows cat (might already be updated by attack result)
+                                if (deadCell.getTag() != null) {
+                                    deadCell.setBackgroundColor(Color.parseColor("#8B4513"));
+                                    deadCell.setImageResource(R.drawable.explosion_icon);
+                                    deadCell.setTag(null);
+
+                                    ImageView finalDeadCell = deadCell;
+                                    deadCell.animate()
+                                            .scaleX(0.5f)
+                                            .scaleY(0.5f)
+                                            .alpha(0.5f)
+                                            .setDuration(600)
+                                            .start();
+
+                                    Log.d(TAG, "Showed cat death animation");
+                                }
+                            });
+                        }
+                    }
+
+                    // Update local list
+                    enemyUnits = updatedEnemyUnits;
                 }
 
                 // ========================================
@@ -938,6 +965,44 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
             }
 
             Log.d(TAG, "=====================================");
+        });
+    }
+
+    private void removeUnitFromFirebase(String playerKey, int row, int col) {
+        Log.d(TAG, "Removing dead unit from Firebase: " + playerKey + " at (" + row + "," + col + ")");
+
+        firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                DataSnapshot unitsSnapshot = snapshot.child("units").child(playerKey);
+
+                // Find and remove the unit
+                for (DataSnapshot unitSnap : unitsSnapshot.getChildren()) {
+                    Integer snapRow = unitSnap.child("row").getValue(Integer.class);
+                    Integer snapCol = unitSnap.child("col").getValue(Integer.class);
+
+                    if (snapRow != null && snapCol != null &&
+                            snapRow == row && snapCol == col) {
+
+                        unitSnap.getRef().removeValue()
+                                .addOnSuccessListener(aVoid -> {
+                                    Log.d(TAG, "✅ Removed dead unit from Firebase");
+                                })
+                                .addOnFailureListener(e -> {
+                                    Log.e(TAG, "❌ Failed to remove unit: " + e.getMessage());
+                                });
+
+                        break;
+                    }
+                }
+
+                snapshot.getRef().removeEventListener(this);
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e(TAG, "Error removing unit: " + error.getMessage());
+            }
         });
     }
 
@@ -1180,7 +1245,6 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         Log.d(TAG, "=== DEFENDER PROCESSING RESULT ===");
         Log.d(TAG, "Hit: " + wasHit + " at (" + row + "," + col + ")");
 
-        // ✅ Mark that we've processed this result
         waitingForDuelResult = false;
         iAmAttackerInCurrentDuel = false;
 
@@ -1218,74 +1282,21 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                 return;
             }
 
-            // DIRECT HIT - Destroyed
+            // ========================================
+            // DIRECT HIT - Unit would be destroyed
+            // ========================================
             if (wasHit) {
                 // CAT TELEPORT before destruction
                 if (unit.type.equals("cat") && !unit.abilityUsed) {
-                    Log.d(TAG, "🐱 My cat teleporting!");
-
-                    final int oldRow = unit.row;
-                    final int oldCol = unit.col;
-
-                    boolean teleported = abilityManager.activateCatTeleport(unit, playerUnits);
-
-                    if (teleported) {
-                        final int newRow = unit.row;
-                        final int newCol = unit.col;
-                        unit.health = 1;
-
-                        Log.d(TAG, "✅ My cat teleported: (" + oldRow + "," + oldCol + ") → (" +
-                                newRow + "," + newCol + ")");
-
-                        // Update MY grid UI
-                        ImageView oldCell = playerCells[oldRow][oldCol];
-                        oldCell.setImageDrawable(null);
-                        oldCell.setTag(null);
-                        oldCell.setBackgroundColor(Color.parseColor("#8FBC8F"));
-
-                        ImageView newCell = playerCells[newRow][newCol];
-                        newCell.setImageResource(R.drawable.cat_icon);
-                        newCell.setTag(unit);
-                        newCell.setBackgroundColor(Color.parseColor("#4CAF50"));
-
-                        newCell.setScaleX(0.3f);
-                        newCell.setScaleY(0.3f);
-                        newCell.setAlpha(0f);
-                        ImageView finalNewCell = newCell;
-                        newCell.animate()
-                                .scaleX(1f)
-                                .scaleY(1f)
-                                .alpha(1f)
-                                .rotation(720f)
-                                .setDuration(600)
-                                .setInterpolator(new OvershootInterpolator())
-                                .start();
-
-                        ImageView finalOldCell = oldCell;
-                        oldCell.animate()
-                                .alpha(0.3f)
-                                .setDuration(150)
-                                .withEndAction(() -> {
-                                    finalOldCell.animate()
-                                            .alpha(1f)
-                                            .setDuration(150)
-                                            .start();
-                                })
-                                .start();
-
-                        Toast.makeText(this,
-                                "🐱 Your cat teleported to (" + newRow + "," + newCol + ")!",
-                                Toast.LENGTH_LONG).show();
-
-                        saveCatTeleportToFirebase(oldRow, oldCol, newRow, newCol);
-
-                        return;
-                    }
+                    Log.d(TAG, "🐱 Cat teleporting after DIRECT HIT!");
+                    executeCatTeleport(unit, cell);
+                    return; // Don't destroy the cat
                 }
 
-                // Unit destroyed
+                // Unit destroyed (not cat or ability already used)
                 unit.health = 0;
                 updateUnitsRemaining(myPlayerKey, -1);
+                removeUnitFromFirebase(myPlayerKey, unit.row, unit.col);
 
                 cell.setBackgroundColor(Color.parseColor("#8B4513"));
                 cell.setImageResource(R.drawable.explosion_icon);
@@ -1301,13 +1312,53 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
                 Toast.makeText(this, "💀 Your " + unit.type + " destroyed!",
                         Toast.LENGTH_LONG).show();
-
             }
+            // ========================================
             // PARTIAL HIT - Damaged
+            // ========================================
             else {
-                unit.health--;
-                cell.setBackgroundColor(Color.parseColor("#FFA500"));
+                unit.health--; // Reduce HP
 
+                Log.d(TAG, "Unit damaged. HP: 2 → " + unit.health);
+
+                // ✅ CHECK: Did partial hit kill the unit?
+                if (unit.health <= 0) {
+                    Log.d(TAG, "Unit died from partial hit!");
+
+                    // CAT TELEPORT on partial hit death
+                    if (unit.type.equals("cat") && !unit.abilityUsed) {
+                        Log.d(TAG, "🐱 Cat teleporting after PARTIAL HIT death!");
+                        executeCatTeleport(unit, cell);
+                        return; // Don't destroy the cat
+                    }
+
+                    // Regular unit destroyed by partial hit
+                    unit.health = 0;
+                    updateUnitsRemaining(myPlayerKey, -1);
+                    removeUnitFromFirebase(opponentPlayerKey, row, col);
+
+                    cell.setBackgroundColor(Color.parseColor("#8B4513")); // Brown
+                    cell.setImageResource(R.drawable.explosion_icon);
+
+                    ImageView finalCell = cell;
+                    cell.animate()
+                            .scaleX(0.5f)
+                            .scaleY(0.5f)
+                            .alpha(0.5f)
+                            .rotation(360f)
+                            .setDuration(600)
+                            .start();
+
+                    Toast.makeText(this, "💀 Your " + unit.type + " destroyed!",
+                            Toast.LENGTH_LONG).show();
+
+                    return; // Exit early - unit is dead
+                }
+
+                // Unit survived with 1 HP - show damage
+                cell.setBackgroundColor(Color.parseColor("#FFA500")); // Orange
+
+                // Rose color change ability
                 if (unit.type.equals("rose") && !unit.abilityUsed) {
                     Log.d(TAG, "🌹 Rose changing color");
                     abilityManager.activateRoseColorChange(unit, cell);
@@ -1328,9 +1379,10 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                         })
                         .start();
 
-                Toast.makeText(this, "🛡️ Your " + unit.type + " damaged! (1 HP)",
+                Toast.makeText(this, "🛡️ Your " + unit.type + " damaged! (" + unit.health + " HP)",
                         Toast.LENGTH_LONG).show();
 
+                // Dog fear activation (only if survived)
                 if (unit.type.equals("dog") && !unit.abilityUsed) {
                     Log.d(TAG, "🐕 Dog activating fear");
 
@@ -1342,6 +1394,105 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    private void executeCatTeleport(SetupActivity.UnitPosition cat, ImageView oldCellView) {
+        final int oldRow = cat.row;
+        final int oldCol = cat.col;
+
+        boolean teleported = abilityManager.activateCatTeleport(cat, playerUnits);
+
+        if (!teleported) {
+            Log.e(TAG, "❌ Cat teleport FAILED - no empty cells!");
+
+            // Cat dies if can't teleport
+            cat.health = 0;
+            updateUnitsRemaining(myPlayerKey, -1);
+
+            oldCellView.setBackgroundColor(Color.parseColor("#8B4513"));
+            oldCellView.setImageResource(R.drawable.explosion_icon);
+
+            ImageView finalOldCell = oldCellView;
+            oldCellView.animate()
+                    .scaleX(0.5f)
+                    .scaleY(0.5f)
+                    .alpha(0.5f)
+                    .rotation(360f)
+                    .setDuration(600)
+                    .start();
+
+            Toast.makeText(this, "💀 Cat had no escape! Destroyed!",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        // Teleport succeeded!
+        final int newRow = cat.row;
+        final int newCol = cat.col;
+        cat.health = 1; // Cat survives with 1 HP
+
+        Log.d(TAG, "✅ Cat teleported: (" + oldRow + "," + oldCol + ") → (" +
+                newRow + "," + newCol + ")");
+
+        // Update MY grid UI - clear old position
+        oldCellView.setImageDrawable(null);
+        oldCellView.setTag(null);
+        oldCellView.setBackgroundColor(Color.parseColor("#8FBC8F")); // Green (empty)
+
+        // Show cat at new position
+        ImageView newCell = playerCells[newRow][newCol];
+        newCell.setImageResource(R.drawable.cat_icon);
+        newCell.setTag(cat);
+        newCell.setBackgroundColor(Color.parseColor("#4CAF50")); // Bright green (safe)
+
+        // Teleport animation
+        newCell.setScaleX(0.3f);
+        newCell.setScaleY(0.3f);
+        newCell.setAlpha(0f);
+        ImageView finalNewCell = newCell;
+        newCell.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .alpha(1f)
+                .rotation(720f)
+                .setDuration(600)
+                .setInterpolator(new OvershootInterpolator())
+                .start();
+
+        // Flash old position
+        ImageView finalOldCellForFlash = oldCellView;
+        oldCellView.animate()
+                .alpha(0.3f)
+                .setDuration(150)
+                .withEndAction(() -> {
+                    finalOldCellForFlash.animate()
+                            .alpha(1f)
+                            .setDuration(150)
+                            .start();
+                })
+                .start();
+
+        Toast.makeText(this,
+                "🐱 Your cat teleported to (" + newRow + "," + newCol + ")!",
+                Toast.LENGTH_LONG).show();
+
+        // Save to Firebase so opponent sees it
+        saveCatTeleportToFirebase(oldRow, oldCol, newRow, newCol);
+    }
+
+    private void removeDeadEnemyUnit(int row, int col) {
+        // Remove from enemyUnits list
+        SetupActivity.UnitPosition toRemove = null;
+        for (SetupActivity.UnitPosition u : enemyUnits) {
+            if (u.row == row && u.col == col) {
+                toRemove = u;
+                break;
+            }
+        }
+        if (toRemove != null) {
+            enemyUnits.remove(toRemove);
+            Log.d(TAG, "Removed dead unit from enemyUnits at (" + row + "," + col + ")");
+        }
     }
 
     private void saveDogFearToFirebase(int row, int col) {
@@ -1512,7 +1663,6 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         Log.d(TAG, "=== ATTACKER PROCESSING RESULT ===");
         Log.d(TAG, "Hit: " + wasHit + " at (" + row + "," + col + ")");
 
-        // ✅ Mark that we've processed this result
         waitingForDuelResult = false;
         iAmAttackerInCurrentDuel = false;
 
@@ -1522,8 +1672,13 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
             if (wasHit) {
                 updateUnitsRemaining(opponentPlayerKey, -1);
+
+                // ✅ Remove from local enemyUnits list
+                removeDeadEnemyUnit(row, col);
+
                 cell.setBackgroundColor(Color.parseColor("#FF0000"));
                 cell.setImageResource(R.drawable.explosion_icon);
+                cell.setTag(null); // ✅ Clear tag
                 cell.setAlpha(1f);
 
                 ImageView finalCell = cell;
@@ -1534,9 +1689,34 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                         .setDuration(600)
                         .start();
 
-                Toast.makeText(this, "💥 Direct hit!", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "💥 Enemy unit destroyed!", Toast.LENGTH_LONG).show();
             } else {
-                cell.setBackgroundColor(Color.parseColor("#FFA500"));
+                // Partial hit - reduce HP in enemyUnits
+                for (SetupActivity.UnitPosition u : enemyUnits) {
+                    if (u.row == row && u.col == col) {
+                        u.health--;
+                        Log.d(TAG, "Enemy unit damaged. HP now: " + u.health);
+
+                        // ✅ If died from partial hit
+                        if (u.health <= 0) {
+                            Log.d(TAG, "Enemy unit died from partial hit!");
+                            removeDeadEnemyUnit(row, col);
+                            updateUnitsRemaining(opponentPlayerKey, -1);
+
+                            cell.setBackgroundColor(Color.parseColor("#FF0000"));
+                            cell.setImageResource(R.drawable.explosion_icon);
+                            cell.setTag(null);
+
+                            Toast.makeText(this, "💥 Enemy unit destroyed!", Toast.LENGTH_LONG).show();
+                        } else {
+                            // Still alive - show damage
+                            cell.setBackgroundColor(Color.parseColor("#FFA500"));
+                            Toast.makeText(this, "⚡ Enemy unit damaged!", Toast.LENGTH_LONG).show();
+                        }
+                        break;
+                    }
+                }
+
                 cell.setAlpha(1f);
 
                 ImageView finalCell = cell;
@@ -1547,16 +1727,12 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                             finalCell.animate().alpha(1f).setDuration(200).start();
                         })
                         .start();
-
-                Toast.makeText(this, "⚡ Partial hit!", Toast.LENGTH_LONG).show();
             }
         });
 
         // End turn after delay
         new Handler().postDelayed(this::endMyTurn, 2000);
     }
-
-
 
     private void clearDuelPending() {
         Log.d(TAG, "Clearing duel pending flag");

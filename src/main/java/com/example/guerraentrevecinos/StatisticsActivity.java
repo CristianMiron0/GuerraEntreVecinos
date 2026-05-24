@@ -76,7 +76,7 @@ public class StatisticsActivity extends AppCompatActivity {
     private void loadStatistics() {
         AppDatabase.databaseWriteExecutor.execute(() -> {
             try {
-                // Get human player (ID 1 or first non-AI player)
+                // Get human player
                 Player player = database.playerDao().getPlayerById(1);
                 if (player == null) {
                     List<Player> humanPlayers = database.playerDao().getAllHumanPlayers();
@@ -86,7 +86,6 @@ public class StatisticsActivity extends AppCompatActivity {
                 }
 
                 if (player == null) {
-                    // No player found - show empty state
                     runOnUiThread(() -> showNoGamesState());
                     return;
                 }
@@ -99,20 +98,22 @@ public class StatisticsActivity extends AppCompatActivity {
                 int totalLosses = player.getTotalLosses();
                 float winRate = totalGames > 0 ? (totalWins * 100f / totalGames) : 0f;
 
-                // ✅ Get win streak
+                // Get win streak
                 int winStreak = database.gameDao().getCurrentWinStreak(player.getPlayerId(), 10);
 
-                // ✅ Get fastest win
+                // Get fastest win
                 Integer fastestWin = database.gameDao().getFastestWinRounds(player.getPlayerId());
                 int fastestWinRounds = (fastestWin != null) ? fastestWin : 0;
 
-                // Get best performance stats
+                // ✅ FIX: Calculate stats properly
                 List<Game> finishedGames = database.gameDao().getAllFinishedGames();
                 float bestAccuracy = 0f;
                 int mostUnitsDestroyed = 0;
                 int totalAttacks = 0;
+                int totalSuccessfulHits = 0; // ✅ Track for overall accuracy
 
                 for (Game game : finishedGames) {
+                    // Only count games where player participated
                     if (game.getPlayer1Id() == player.getPlayerId() ||
                             game.getPlayer2Id() == player.getPlayerId()) {
 
@@ -120,18 +121,35 @@ public class StatisticsActivity extends AppCompatActivity {
                                 .getStatsByGameAndPlayer(game.getGameId(), player.getPlayerId());
 
                         if (stats != null) {
-                            if (stats.getAccuracyPercentage() > bestAccuracy) {
-                                bestAccuracy = stats.getAccuracyPercentage();
+                            // ✅ Calculate accuracy if not set
+                            if (stats.getTotalAttacks() > 0) {
+                                float gameAccuracy = (stats.getSuccessfulHits() * 100f) / stats.getTotalAttacks();
+                                stats.setAccuracyPercentage(gameAccuracy);
+
+                                // Update in database
+                                database.gameStatsDao().update(stats);
+
+                                // Track best
+                                if (gameAccuracy > bestAccuracy) {
+                                    bestAccuracy = gameAccuracy;
+                                }
                             }
+
                             if (stats.getUnitsDestroyed() > mostUnitsDestroyed) {
                                 mostUnitsDestroyed = stats.getUnitsDestroyed();
                             }
+
                             totalAttacks += stats.getTotalAttacks();
+                            totalSuccessfulHits += stats.getSuccessfulHits();
                         }
                     }
                 }
 
-                // Get recent games (last 10)
+                // ✅ Calculate overall accuracy
+                float overallAccuracy = totalAttacks > 0 ?
+                        (totalSuccessfulHits * 100f) / totalAttacks : 0f;
+
+                // Get recent games
                 List<Game> recentGames = database.gameDao().getRecentGames();
                 gameHistoryList.clear();
 
@@ -145,8 +163,16 @@ public class StatisticsActivity extends AppCompatActivity {
                         GameStats stats = database.gameStatsDao()
                                 .getStatsByGameAndPlayer(game.getGameId(), player.getPlayerId());
 
-                        float accuracy = stats != null ? stats.getAccuracyPercentage() : 0f;
-                        int unitsDestroyed = stats != null ? stats.getUnitsDestroyed() : 0;
+                        float accuracy = 0f;
+                        int unitsDestroyed = 0;
+
+                        if (stats != null) {
+                            // ✅ Recalculate accuracy for display
+                            if (stats.getTotalAttacks() > 0) {
+                                accuracy = (stats.getSuccessfulHits() * 100f) / stats.getTotalAttacks();
+                            }
+                            unitsDestroyed = stats.getUnitsDestroyed();
+                        }
 
                         String date = formatDate(game.getFinishedAt());
 
@@ -171,14 +197,16 @@ public class StatisticsActivity extends AppCompatActivity {
                 final int finalTotalAttacks = totalAttacks;
                 final int finalWinStreak = winStreak;
                 final int finalFastestWin = fastestWinRounds;
+                final float finalOverallAccuracy = overallAccuracy; // ✅ NEW
 
                 runOnUiThread(() -> {
                     if (finalTotalGames == 0) {
                         showNoGamesState();
                     } else {
                         showStatistics(finalTotalGames, finalTotalWins, finalTotalLosses,
-                                finalWinRate, finalBestAccuracy, finalMostUnitsDestroyed,
-                                finalTotalAttacks, finalWinStreak, finalFastestWin);
+                                finalWinRate, finalBestAccuracy, finalOverallAccuracy,
+                                finalMostUnitsDestroyed, finalTotalAttacks,
+                                finalWinStreak, finalFastestWin);
                     }
                 });
 
@@ -190,28 +218,27 @@ public class StatisticsActivity extends AppCompatActivity {
     }
 
     private void showStatistics(int totalGames, int totalWins, int totalLosses,
-                                float winRate, float bestAccuracy, int mostUnitsDestroyed,
-                                int totalAttacks, int winStreak, int fastestWin) {
+                                float winRate, float bestAccuracy, float overallAccuracy,
+                                int mostUnitsDestroyed, int totalAttacks,
+                                int winStreak, int fastestWin) {
         // Overall stats
         tvTotalGames.setText(String.valueOf(totalGames));
         tvTotalWins.setText(String.valueOf(totalWins));
         tvTotalLosses.setText(String.valueOf(totalLosses));
         tvWinRate.setText(String.format(Locale.getDefault(), "%.0f%%", winRate));
 
-        // Best performance
+        // Show BEST accuracy
         tvBestAccuracy.setText(String.format(Locale.getDefault(), "%.0f%%", bestAccuracy));
         tvMostUnitsDestroyed.setText(String.valueOf(mostUnitsDestroyed));
         tvTotalAttacks.setText(String.valueOf(totalAttacks));
 
-        // Show/hide views
-        tvNoGames.setVisibility(View.GONE);
-        rvRecentGames.setVisibility(View.VISIBLE);
-
-        // ✅ Win streak
+        // Win streak
         TextView tvWinStreak = findViewById(R.id.tvWinStreak);
-        tvWinStreak.setText(String.valueOf(winStreak));
+        if (tvWinStreak != null) {
+            tvWinStreak.setText(String.valueOf(winStreak));
+        }
 
-        // ✅ Show/hide views
+        // Show/hide views
         tvNoGames.setVisibility(View.GONE);
         rvRecentGames.setVisibility(View.VISIBLE);
 

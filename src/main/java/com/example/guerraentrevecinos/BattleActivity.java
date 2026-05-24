@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
+import android.util.Log;
 import android.view.View;
 import android.widget.GridLayout;
 import android.widget.ImageView;
@@ -62,6 +63,8 @@ public class BattleActivity extends AppCompatActivity {
     // Ability manager
     private AbilityManager abilityManager;
     private SetupActivity.UnitPosition lastAttackedPlayerUnit = null;
+    private int aiAttackCount = 0; // Track number of attacks
+    private static final int AI_HIT_PATTERN = 3; // Hit every 3rd attack
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -347,27 +350,58 @@ public class BattleActivity extends AppCompatActivity {
         if (unit != null) {
             unit.health--;
 
+            Log.d("BattleActivity", "Enemy unit damaged. HP: 2 → " + unit.health);
+
             ImageView cell = enemyCells[row][col];
             enemyRevealedCells[row][col] = true;
 
-            if (unit.type.equals("rose") && !unit.abilityUsed) {
-                abilityManager.activateRoseColorChange(unit, cell);
-            }
+            // Check if unit died from partial hit
+            if (unit.health <= 0) {
+                Log.d("BattleActivity", "Enemy unit died from partial hit!");
 
-            if (unit.health == 1) {
-                cell.setBackgroundColor(Color.parseColor("#FFA500"));
+                // CAT TELEPORT on death
+                if (unit.type.equals("cat") && !unit.abilityUsed) {
+                    Log.d("BattleActivity", "🐱 AI Cat teleporting after partial hit death!");
 
-                if (unit.type.equals("rose")) {
-                    cell.setImageResource(abilityManager.getRoseIcon(unit));
-                } else {
-                    cell.setImageResource(getUnitIcon(unit.type));
+                    final int oldRow = unit.row;
+                    final int oldCol = unit.col;
+
+                    boolean teleported = abilityManager.activateCatTeleport(unit, aiUnits);
+
+                    if (teleported) {
+                        final int newRow = unit.row;
+                        final int newCol = unit.col;
+                        unit.health = 1;
+
+                        // Clear old position
+                        cell.setBackgroundColor(Color.parseColor("#C5E1A5"));
+                        cell.setImageDrawable(null);
+                        cell.setAlpha(1f);
+
+                        // Show at new position
+                        ImageView newCell = enemyCells[newRow][newCol];
+                        enemyRevealedCells[newRow][newCol] = true;
+                        newCell.setBackgroundColor(Color.parseColor("#FFA500"));
+                        newCell.setImageResource(R.drawable.cat_icon);
+                        newCell.setAlpha(1f);
+
+                        newCell.setScaleX(0.3f);
+                        newCell.setScaleY(0.3f);
+                        newCell.animate()
+                                .scaleX(1f)
+                                .scaleY(1f)
+                                .rotation(720f)
+                                .setDuration(600)
+                                .start();
+
+                        Toast.makeText(this, "🐱 Enemy cat teleported!",
+                                Toast.LENGTH_LONG).show();
+
+                        return; // Don't show destruction
+                    }
                 }
-                cell.setAlpha(1f);
 
-                Toast.makeText(this, "Enemy " + unit.type + " damaged! (1 HP left)",
-                        Toast.LENGTH_LONG).show();
-
-            } else if (unit.health <= 0) {
+                // Regular death
                 unit.health = 0;
                 cell.setBackgroundColor(Color.parseColor("#FF0000"));
                 cell.setImageResource(R.drawable.explosion_icon);
@@ -384,7 +418,25 @@ public class BattleActivity extends AppCompatActivity {
                         .start();
 
                 checkWinCondition();
+                return;
             }
+
+            // Survived with 1 HP
+            if (unit.type.equals("rose") && !unit.abilityUsed) {
+                abilityManager.activateRoseColorChange(unit, cell);
+            }
+
+            cell.setBackgroundColor(Color.parseColor("#FFA500")); // Orange
+
+            if (unit.type.equals("rose")) {
+                cell.setImageResource(abilityManager.getRoseIcon(unit));
+            } else {
+                cell.setImageResource(getUnitIcon(unit.type));
+            }
+            cell.setAlpha(1f);
+
+            Toast.makeText(this, "Enemy " + unit.type + " damaged! (1 HP left)",
+                    Toast.LENGTH_LONG).show();
         }
     }
 
@@ -398,21 +450,55 @@ public class BattleActivity extends AppCompatActivity {
         }
 
         if (unit != null) {
+            // CAT TELEPORT
             if (unit.type.equals("cat") && !unit.abilityUsed) {
-                boolean teleported = abilityManager.activateCatTeleport(unit, playerUnits);
-                if (teleported) {
-                    unit.health = 1;
-                    enemyRevealedCells[unit.row][unit.col] = true;
+                Log.d("BattleActivity", "🐱 AI Cat teleporting!");
 
-                    ImageView newCell = enemyCells[unit.row][unit.col];
-                    newCell.setBackgroundColor(Color.parseColor("#FFA500"));
+                final int oldRow = unit.row;
+                final int oldCol = unit.col;
+
+                boolean teleported = abilityManager.activateCatTeleport(unit, aiUnits);
+
+                if (teleported) {
+                    final int newRow = unit.row;
+                    final int newCol = unit.col;
+                    unit.health = 1;
+
+                    Log.d("BattleActivity", "✅ Cat teleported: (" + oldRow + "," + oldCol + ") → (" +
+                            newRow + "," + newCol + ")");
+
+                    // Clear old position
+                    ImageView oldCell = enemyCells[oldRow][oldCol];
+                    enemyRevealedCells[oldRow][oldCol] = true;
+                    oldCell.setBackgroundColor(Color.parseColor("#C5E1A5")); // Light green (empty)
+                    oldCell.setImageDrawable(null);
+                    oldCell.setAlpha(1f);
+
+                    // Show at new position
+                    ImageView newCell = enemyCells[newRow][newCol];
+                    enemyRevealedCells[newRow][newCol] = true;
+                    newCell.setBackgroundColor(Color.parseColor("#FFA500")); // Orange
                     newCell.setImageResource(R.drawable.cat_icon);
                     newCell.setAlpha(1f);
 
-                    return;
+                    // Teleport animation
+                    newCell.setScaleX(0.3f);
+                    newCell.setScaleY(0.3f);
+                    newCell.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .rotation(720f)
+                            .setDuration(600)
+                            .start();
+
+                    Toast.makeText(this, "🐱 Enemy cat teleported to (" + newRow + "," + newCol + ")!",
+                            Toast.LENGTH_LONG).show();
+
+                    return; // Don't destroy - cat survived
                 }
             }
 
+            // Unit destroyed
             unit.health = 0;
 
             ImageView cell = enemyCells[row][col];
@@ -441,12 +527,13 @@ public class BattleActivity extends AppCompatActivity {
             ImageView cell = playerCells[unit.row][unit.col];
             cell.setBackgroundColor(Color.parseColor("#8FBC8F"));
 
+            ImageView finalCell = cell;
             cell.animate()
                     .scaleX(1.3f)
                     .scaleY(1.3f)
                     .setDuration(200)
                     .withEndAction(() -> {
-                        cell.animate().scaleX(1f).scaleY(1f).setDuration(200).start();
+                        finalCell.animate().scaleX(1f).scaleY(1f).setDuration(200).start();
                     })
                     .start();
 
@@ -459,45 +546,63 @@ public class BattleActivity extends AppCompatActivity {
         unit.health--;
         lastAttackedPlayerUnit = unit;
 
+        Log.d("BattleActivity", "Player unit damaged. HP: 2 → " + unit.health);
+
         ImageView cell = playerCells[unit.row][unit.col];
 
-        if (unit.type.equals("rose") && !unit.abilityUsed) {
-            abilityManager.activateRoseColorChange(unit, cell);
-        }
+        // Check if died from partial hit
+        if (unit.health <= 0) {
+            Log.d("BattleActivity", "Player unit died from partial hit!");
 
-        if (unit.health == 1) {
-            cell.setBackgroundColor(Color.parseColor("#FFA500"));
-
-            if (unit.type.equals("rose")) {
-                cell.setImageResource(abilityManager.getRoseIcon(unit));
-            } else {
-                cell.setImageResource(getUnitIcon(unit.type));
-            }
-
-            Toast.makeText(this, "Your " + unit.type + " was damaged! (1 HP left)",
-                    Toast.LENGTH_LONG).show();
-
-            cell.animate()
-                    .alpha(0.5f)
-                    .setDuration(200)
-                    .withEndAction(() -> {
-                        cell.animate().alpha(1f).setDuration(200).start();
-                    })
-                    .start();
-
-            if (unit.type.equals("dog") && !unit.abilityUsed) {
-                abilityManager.activateDogFear(unit, cell);
-            }
-
-        } else if (unit.health <= 0) {
+            // CAT TELEPORT
             if (unit.type.equals("cat") && !unit.abilityUsed) {
+                Log.d("BattleActivity", "🐱 Player Cat teleporting!");
+
+                final int oldRow = unit.row;
+                final int oldCol = unit.col;
+
                 boolean teleported = abilityManager.activateCatTeleport(unit, playerUnits);
+
                 if (teleported) {
+                    final int newRow = unit.row;
+                    final int newCol = unit.col;
                     unit.health = 1;
-                    return;
+
+                    Log.d("BattleActivity", "✅ Player cat teleported: (" + oldRow + "," + oldCol +
+                            ") → (" + newRow + "," + newCol + ")");
+
+                    // Clear old cell
+                    ImageView oldCell = playerCells[oldRow][oldCol];
+                    oldCell.setImageDrawable(null);
+                    oldCell.setTag(null);
+                    oldCell.setBackgroundColor(Color.parseColor("#8FBC8F")); // Green
+
+                    // Show at new position
+                    ImageView newCell = playerCells[newRow][newCol];
+                    newCell.setImageResource(R.drawable.cat_icon);
+                    newCell.setTag(unit);
+                    newCell.setBackgroundColor(Color.parseColor("#4CAF50")); // Bright green
+
+                    // Animation
+                    newCell.setScaleX(0.3f);
+                    newCell.setScaleY(0.3f);
+                    newCell.setAlpha(0f);
+                    newCell.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .alpha(1f)
+                            .rotation(720f)
+                            .setDuration(600)
+                            .start();
+
+                    Toast.makeText(this, "🐱 Your cat teleported to (" + newRow + "," + newCol + ")!",
+                            Toast.LENGTH_LONG).show();
+
+                    return; // Don't destroy
                 }
             }
 
+            // Regular death
             unit.health = 0;
             cell.setBackgroundColor(Color.parseColor("#8B4513"));
             cell.setImageResource(R.drawable.explosion_icon);
@@ -505,6 +610,7 @@ public class BattleActivity extends AppCompatActivity {
             Toast.makeText(this, "Your " + unit.type + " was DESTROYED!",
                     Toast.LENGTH_LONG).show();
 
+            ImageView finalCell1 = cell;
             cell.animate()
                     .scaleX(0.5f)
                     .scaleY(0.5f)
@@ -513,6 +619,36 @@ public class BattleActivity extends AppCompatActivity {
                     .start();
 
             checkWinCondition();
+            return;
+        }
+
+        // Survived with 1 HP
+        if (unit.type.equals("rose") && !unit.abilityUsed) {
+            abilityManager.activateRoseColorChange(unit, cell);
+        }
+
+        cell.setBackgroundColor(Color.parseColor("#FFA500"));
+
+        if (unit.type.equals("rose")) {
+            cell.setImageResource(abilityManager.getRoseIcon(unit));
+        } else {
+            cell.setImageResource(getUnitIcon(unit.type));
+        }
+
+        Toast.makeText(this, "Your " + unit.type + " was damaged! (" + unit.health + " HP)",
+                Toast.LENGTH_LONG).show();
+
+        ImageView finalCell2 = cell;
+        cell.animate()
+                .alpha(0.5f)
+                .setDuration(200)
+                .withEndAction(() -> {
+                    finalCell2.animate().alpha(1f).setDuration(200).start();
+                })
+                .start();
+
+        if (unit.type.equals("dog") && !unit.abilityUsed) {
+            abilityManager.activateDogFear(unit, cell);
         }
     }
 
@@ -521,12 +657,13 @@ public class BattleActivity extends AppCompatActivity {
             ImageView cell = playerCells[unit.row][unit.col];
             cell.setBackgroundColor(Color.parseColor("#8FBC8F"));
 
+            ImageView finalCell = cell;
             cell.animate()
                     .scaleX(1.3f)
                     .scaleY(1.3f)
                     .setDuration(200)
                     .withEndAction(() -> {
-                        cell.animate().scaleX(1f).scaleY(1f).setDuration(200).start();
+                        finalCell.animate().scaleX(1f).scaleY(1f).setDuration(200).start();
                     })
                     .start();
 
@@ -534,6 +671,48 @@ public class BattleActivity extends AppCompatActivity {
 
             Toast.makeText(this, "🛡️ Fence Shield absorbed the attack!", Toast.LENGTH_LONG).show();
             return;
+        }
+
+        // CAT TELEPORT (direct hit)
+        if (unit.type.equals("cat") && !unit.abilityUsed) {
+            Log.d("BattleActivity", "🐱 Player Cat teleporting (direct hit)!");
+
+            final int oldRow = unit.row;
+            final int oldCol = unit.col;
+
+            boolean teleported = abilityManager.activateCatTeleport(unit, playerUnits);
+
+            if (teleported) {
+                final int newRow = unit.row;
+                final int newCol = unit.col;
+                unit.health = 1;
+
+                // Clear old cell
+                ImageView oldCell = playerCells[oldRow][oldCol];
+                oldCell.setImageDrawable(null);
+                oldCell.setTag(null);
+                oldCell.setBackgroundColor(Color.parseColor("#8FBC8F"));
+
+                // Show at new position
+                ImageView newCell = playerCells[newRow][newCol];
+                newCell.setImageResource(R.drawable.cat_icon);
+                newCell.setTag(unit);
+                newCell.setBackgroundColor(Color.parseColor("#4CAF50"));
+
+                newCell.setScaleX(0.3f);
+                newCell.setScaleY(0.3f);
+                newCell.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .rotation(720f)
+                        .setDuration(600)
+                        .start();
+
+                Toast.makeText(this, "🐱 Your cat teleported!",
+                        Toast.LENGTH_LONG).show();
+
+                return;
+            }
         }
 
         unit.health = 0;
@@ -544,6 +723,7 @@ public class BattleActivity extends AppCompatActivity {
 
         Toast.makeText(this, "Your " + unit.type + " was DESTROYED!", Toast.LENGTH_LONG).show();
 
+        ImageView finalCell = cell;
         cell.animate()
                 .scaleX(0.5f)
                 .scaleY(0.5f)
@@ -616,8 +796,78 @@ public class BattleActivity extends AppCompatActivity {
         }
 
         Random random = new Random();
-        currentAITarget = aliveUnits.get(random.nextInt(aliveUnits.size()));
 
+        // ========================================
+        // SMART AI: Decide whether to hit or miss
+        // Pattern: Miss, Miss, Hit, Miss, Miss, Hit...
+        // ========================================
+        aiAttackCount++;
+        boolean shouldHit = (aiAttackCount % AI_HIT_PATTERN == 0);
+
+        Log.d("BattleActivity", "AI Attack #" + aiAttackCount + ", Should hit: " + shouldHit);
+
+        if (shouldHit) {
+            // HIT: Target a real unit
+            currentAITarget = aliveUnits.get(random.nextInt(aliveUnits.size()));
+
+            Log.d("BattleActivity", "AI targeting unit at (" + currentAITarget.row + "," + currentAITarget.col + ")");
+
+        } else {
+            // MISS: Pick an empty cell
+            List<int[]> emptyCells = new ArrayList<>();
+
+            for (int row = 0; row < 8; row++) {
+                for (int col = 0; col < 8; col++) {
+                    boolean isEmpty = true;
+
+                    for (SetupActivity.UnitPosition unit : playerUnits) {
+                        if (unit.row == row && unit.col == col && unit.health > 0) {
+                            isEmpty = false;
+                            break;
+                        }
+                    }
+
+                    if (isEmpty) {
+                        emptyCells.add(new int[]{row, col});
+                    }
+                }
+            }
+
+            if (!emptyCells.isEmpty()) {
+                // Pick random empty cell
+                int[] emptyCell = emptyCells.get(random.nextInt(emptyCells.size()));
+
+                Log.d("BattleActivity", "AI intentionally missing at (" + emptyCell[0] + "," + emptyCell[1] + ")");
+
+                // Create fake "target" for miss
+                currentAITarget = null; // No actual target
+
+                // Show miss immediately
+                Toast.makeText(this, "Enemy attacks empty space at (" + emptyCell[0] + "," + emptyCell[1] + ")!",
+                        Toast.LENGTH_LONG).show();
+
+                showRockFalling(emptyCell[0], emptyCell[1]);
+
+                // Just show splash and continue
+                new Handler().postDelayed(() -> {
+                    showSplashOnPlayerGrid(emptyCell[0], emptyCell[1]);
+
+                    // Save miss to database
+                    saveMoveToDatabase(emptyCell[0], emptyCell[1], false, -1, -1, "miss");
+
+                    new Handler().postDelayed(this::startNextRound, 1500);
+                }, 1500);
+
+                return; // Exit early - no duel needed
+
+            } else {
+                // No empty cells - forced to hit
+                currentAITarget = aliveUnits.get(random.nextInt(aliveUnits.size()));
+                Log.d("BattleActivity", "No empty cells - AI forced to hit");
+            }
+        }
+
+        // Clear dog fear if needed
         if (lastAttackedPlayerUnit != null &&
                 lastAttackedPlayerUnit.type.equals("dog") &&
                 lastAttackedPlayerUnit.dogFearActive) {
@@ -631,6 +881,7 @@ public class BattleActivity extends AppCompatActivity {
             }
         }
 
+        // Launch duel for hit
         Toast.makeText(this, "Enemy attacks your " + currentAITarget.type +
                         " at (" + currentAITarget.row + "," + currentAITarget.col + ")!",
                 Toast.LENGTH_LONG).show();
@@ -641,6 +892,17 @@ public class BattleActivity extends AppCompatActivity {
             launchMiniDuel(currentAITarget.row, currentAITarget.col,
                     currentAITarget.type, false);
         }, 1500);
+    }
+
+    private void showSplashOnPlayerGrid(int row, int col) {
+        ImageView cell = playerCells[row][col];
+
+        cell.setBackgroundColor(Color.parseColor("#2196F3")); // Blue
+        cell.setImageResource(R.drawable.splash_icon);
+
+        Toast.makeText(this, "Enemy missed! Empty cell.", Toast.LENGTH_SHORT).show();
+
+        Log.d("BattleActivity", "Showed miss splash at (" + row + "," + col + ")");
     }
 
     private void showRockFalling(int row, int col) {

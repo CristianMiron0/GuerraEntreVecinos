@@ -6,10 +6,10 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
 import android.view.View;
+import android.view.animation.OvershootInterpolator;
 import android.widget.GridLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
-import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.example.guerraentrevecinos.database.AppDatabase;
@@ -60,11 +60,13 @@ public class BattleActivity extends AppCompatActivity {
     private boolean isSelectingUnitForPower = false;
     private String activePowerMode = null;
 
+    private ImageView neighborSprite;
+
     // Ability manager
     private AbilityManager abilityManager;
-    private SetupActivity.UnitPosition lastAttackedPlayerUnit = null;
     private int aiAttackCount = 0; // Track number of attacks
     private static final int AI_HIT_PATTERN = 3; // Hit every 3rd attack
+    private boolean gameEnded = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -110,8 +112,45 @@ public class BattleActivity extends AppCompatActivity {
         tvRoundCounter = findViewById(R.id.tvRoundCounter);
         playerGardenSection = findViewById(R.id.playerGardenSection);
         enemyGardenSection = findViewById(R.id.enemyGardenSection);
+        neighborSprite = findViewById(R.id.neighborSprite);
 
         updateRoundCounter();
+    }
+
+    private void playAttackAnimation() {
+        if (neighborSprite == null) return;
+        Handler h = new Handler();
+        int[] frames = {
+            R.drawable.neighbour_alert,
+            R.drawable.neighbour_attack,
+            R.drawable.neighbour_alert,
+            R.drawable.neighbour_attack
+        };
+        int frameMs = 120;
+        for (int i = 0; i < frames.length; i++) {
+            final int res = frames[i];
+            h.postDelayed(() -> neighborSprite.setImageResource(res), (long) i * frameMs);
+        }
+    }
+
+    private void resetNeighbourToIdle() {
+        if (neighborSprite != null) {
+            neighborSprite.setImageResource(R.drawable.neighbour_idle);
+        }
+    }
+
+    private void showDeathEffect(ImageView cell) {
+        cell.setImageResource(R.drawable.rip);
+        cell.setScaleX(0f);
+        cell.setScaleY(0f);
+        cell.setAlpha(0f);
+        cell.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .alpha(1f)
+                .setDuration(450)
+                .setInterpolator(new OvershootInterpolator(2f))
+                .start();
     }
 
     private void createPlayerGrid() {
@@ -131,7 +170,7 @@ public class BattleActivity extends AppCompatActivity {
                 params.columnSpec = GridLayout.spec(col);
                 cell.setLayoutParams(params);
 
-                cell.setBackgroundColor(Color.parseColor("#8FBC8F"));
+                cell.setBackgroundColor(Color.parseColor("#608FBC8F"));
                 cell.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
                 cell.setPadding(8, 8, 8, 8);
 
@@ -181,8 +220,7 @@ public class BattleActivity extends AppCompatActivity {
                 cell.setLayoutParams(params);
 
                 // Fog of war
-                cell.setBackgroundColor(Color.parseColor("#999999"));
-                cell.setAlpha(0.8f);
+                cell.setBackgroundColor(Color.parseColor("#70999999"));
                 cell.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
                 cell.setPadding(8, 8, 8, 8);
 
@@ -205,6 +243,7 @@ public class BattleActivity extends AppCompatActivity {
     private void startPlayerTurn() {
         isPlayerTurn = true;
         hasAttackedThisTurn = false;
+        resetNeighbourToIdle();
 
         tvTurnIndicator.setText("YOUR TURN - ATTACK!");
         tvTurnIndicator.setTextColor(getColor(android.R.color.holo_green_dark));
@@ -219,18 +258,15 @@ public class BattleActivity extends AppCompatActivity {
 
     private void onEnemyCellClicked(int row, int col) {
         if (!isPlayerTurn) {
-            Toast.makeText(this, "Wait for your turn!", Toast.LENGTH_SHORT).show();
             return;
         }
 
         // Block attacks while selecting power
         if (isSelectingUnitForPower) {
-            Toast.makeText(this, "Finish using power first or cancel!", Toast.LENGTH_SHORT).show();
             return;
         }
 
         if (hasAttackedThisTurn) {
-            Toast.makeText(this, "You already attacked this turn!", Toast.LENGTH_SHORT).show();
             return;
         }
 
@@ -251,9 +287,11 @@ public class BattleActivity extends AppCompatActivity {
 
         if (hitUnit != null) {
             // HIT! Launch mini-duel
+            playAttackAnimation();
             launchMiniDuel(row, col, hitUnit.type, true);
         } else {
             // MISS - empty cell
+            playAttackAnimation();
             showMissOnEnemyGrid(row, col);
             new Handler().postDelayed(this::endPlayerTurn, 1500);
         }
@@ -363,9 +401,6 @@ public class BattleActivity extends AppCompatActivity {
                 if (unit.type.equals("cat") && !unit.abilityUsed) {
                     Log.d("BattleActivity", "🐱 AI Cat teleporting after partial hit death!");
 
-                    final int oldRow = unit.row;
-                    final int oldCol = unit.col;
-
                     boolean teleported = abilityManager.activateCatTeleport(unit, aiUnits);
 
                     if (teleported) {
@@ -382,7 +417,7 @@ public class BattleActivity extends AppCompatActivity {
                         ImageView newCell = enemyCells[newRow][newCol];
                         enemyRevealedCells[newRow][newCol] = true;
                         newCell.setBackgroundColor(Color.parseColor("#FFA500"));
-                        newCell.setImageResource(R.drawable.cat_icon);
+                        newCell.setImageResource(R.drawable.cat_enemy);
                         newCell.setAlpha(1f);
 
                         newCell.setScaleX(0.3f);
@@ -394,9 +429,6 @@ public class BattleActivity extends AppCompatActivity {
                                 .setDuration(600)
                                 .start();
 
-                        Toast.makeText(this, "🐱 Enemy cat teleported!",
-                                Toast.LENGTH_LONG).show();
-
                         return; // Don't show destruction
                     }
                 }
@@ -404,18 +436,7 @@ public class BattleActivity extends AppCompatActivity {
                 // Regular death
                 unit.health = 0;
                 cell.setBackgroundColor(Color.parseColor("#FF0000"));
-                cell.setImageResource(R.drawable.explosion_icon);
-                cell.setAlpha(1f);
-
-                Toast.makeText(this, "Enemy " + unit.type + " DESTROYED!",
-                        Toast.LENGTH_LONG).show();
-
-                cell.animate()
-                        .scaleX(1.3f)
-                        .scaleY(1.3f)
-                        .alpha(0.5f)
-                        .setDuration(600)
-                        .start();
+                showDeathEffect(cell);
 
                 checkWinCondition();
                 return;
@@ -434,9 +455,6 @@ public class BattleActivity extends AppCompatActivity {
                 cell.setImageResource(getUnitIcon(unit.type, true));
             }
             cell.setAlpha(1f);
-
-            Toast.makeText(this, "Enemy " + unit.type + " damaged! (1 HP left)",
-                    Toast.LENGTH_LONG).show();
         }
     }
 
@@ -478,7 +496,7 @@ public class BattleActivity extends AppCompatActivity {
                     ImageView newCell = enemyCells[newRow][newCol];
                     enemyRevealedCells[newRow][newCol] = true;
                     newCell.setBackgroundColor(Color.parseColor("#FFA500")); // Orange
-                    newCell.setImageResource(R.drawable.cat_icon);
+                    newCell.setImageResource(R.drawable.cat_enemy);
                     newCell.setAlpha(1f);
 
                     // Teleport animation
@@ -491,9 +509,6 @@ public class BattleActivity extends AppCompatActivity {
                             .setDuration(600)
                             .start();
 
-                    Toast.makeText(this, "🐱 Enemy cat teleported to (" + newRow + "," + newCol + ")!",
-                            Toast.LENGTH_LONG).show();
-
                     return; // Don't destroy - cat survived
                 }
             }
@@ -505,18 +520,7 @@ public class BattleActivity extends AppCompatActivity {
             enemyRevealedCells[row][col] = true;
 
             cell.setBackgroundColor(Color.parseColor("#FF0000"));
-            cell.setImageResource(R.drawable.explosion_icon);
-            cell.setAlpha(1f);
-
-            Toast.makeText(this, "Enemy " + unit.type + " DESTROYED!",
-                    Toast.LENGTH_LONG).show();
-
-            cell.animate()
-                    .scaleX(1.3f)
-                    .scaleY(1.3f)
-                    .alpha(0.5f)
-                    .setDuration(600)
-                    .start();
+            showDeathEffect(cell);
 
             checkWinCondition();
         }
@@ -525,7 +529,7 @@ public class BattleActivity extends AppCompatActivity {
     private void damagePlayerUnit(SetupActivity.UnitPosition unit) {
         if (powerManager.isUnitProtected(unit)) {
             ImageView cell = playerCells[unit.row][unit.col];
-            cell.setBackgroundColor(Color.parseColor("#8FBC8F"));
+            cell.setBackgroundColor(Color.parseColor("#608FBC8F"));
 
             ImageView finalCell = cell;
             cell.animate()
@@ -538,13 +542,10 @@ public class BattleActivity extends AppCompatActivity {
                     .start();
 
             powerManager.removeFenceProtection();
-            Toast.makeText(this, "🛡️ Fence Shield absorbed the attack!",
-                    Toast.LENGTH_LONG).show();
             return;
         }
 
         unit.health--;
-        lastAttackedPlayerUnit = unit;
 
         Log.d("BattleActivity", "Player unit damaged. HP: 2 → " + unit.health);
 
@@ -575,7 +576,7 @@ public class BattleActivity extends AppCompatActivity {
                     ImageView oldCell = playerCells[oldRow][oldCol];
                     oldCell.setImageDrawable(null);
                     oldCell.setTag(null);
-                    oldCell.setBackgroundColor(Color.parseColor("#8FBC8F")); // Green
+                    oldCell.setBackgroundColor(Color.parseColor("#608FBC8F")); // Green
 
                     // Show at new position
                     ImageView newCell = playerCells[newRow][newCol];
@@ -595,9 +596,6 @@ public class BattleActivity extends AppCompatActivity {
                             .setDuration(600)
                             .start();
 
-                    Toast.makeText(this, "🐱 Your cat teleported to (" + newRow + "," + newCol + ")!",
-                            Toast.LENGTH_LONG).show();
-
                     return; // Don't destroy
                 }
             }
@@ -605,18 +603,7 @@ public class BattleActivity extends AppCompatActivity {
             // Regular death
             unit.health = 0;
             cell.setBackgroundColor(Color.parseColor("#8B4513"));
-            cell.setImageResource(R.drawable.explosion_icon);
-
-            Toast.makeText(this, "Your " + unit.type + " was DESTROYED!",
-                    Toast.LENGTH_LONG).show();
-
-            ImageView finalCell1 = cell;
-            cell.animate()
-                    .scaleX(0.5f)
-                    .scaleY(0.5f)
-                    .alpha(0.5f)
-                    .setDuration(600)
-                    .start();
+            showDeathEffect(cell);
 
             checkWinCondition();
             return;
@@ -635,27 +622,23 @@ public class BattleActivity extends AppCompatActivity {
             cell.setImageResource(getUnitIcon(unit.type));
         }
 
-        Toast.makeText(this, "Your " + unit.type + " was damaged! (" + unit.health + " HP)",
-                Toast.LENGTH_LONG).show();
-
-        ImageView finalCell2 = cell;
-        cell.animate()
-                .alpha(0.5f)
-                .setDuration(200)
-                .withEndAction(() -> {
-                    finalCell2.animate().alpha(1f).setDuration(200).start();
-                })
-                .start();
-
         if (unit.type.equals("dog") && !unit.abilityUsed) {
             abilityManager.activateDogFear(unit, cell);
+        } else {
+            cell.animate()
+                    .alpha(0.5f)
+                    .setDuration(200)
+                    .withEndAction(() -> {
+                        cell.animate().alpha(1f).setDuration(200).start();
+                    })
+                    .start();
         }
     }
 
     private void destroyPlayerUnit(SetupActivity.UnitPosition unit) {
         if (powerManager.isUnitProtected(unit)) {
             ImageView cell = playerCells[unit.row][unit.col];
-            cell.setBackgroundColor(Color.parseColor("#8FBC8F"));
+            cell.setBackgroundColor(Color.parseColor("#608FBC8F"));
 
             ImageView finalCell = cell;
             cell.animate()
@@ -668,8 +651,6 @@ public class BattleActivity extends AppCompatActivity {
                     .start();
 
             powerManager.removeFenceProtection();
-
-            Toast.makeText(this, "🛡️ Fence Shield absorbed the attack!", Toast.LENGTH_LONG).show();
             return;
         }
 
@@ -691,7 +672,7 @@ public class BattleActivity extends AppCompatActivity {
                 ImageView oldCell = playerCells[oldRow][oldCol];
                 oldCell.setImageDrawable(null);
                 oldCell.setTag(null);
-                oldCell.setBackgroundColor(Color.parseColor("#8FBC8F"));
+                oldCell.setBackgroundColor(Color.parseColor("#608FBC8F"));
 
                 // Show at new position
                 ImageView newCell = playerCells[newRow][newCol];
@@ -708,9 +689,6 @@ public class BattleActivity extends AppCompatActivity {
                         .setDuration(600)
                         .start();
 
-                Toast.makeText(this, "🐱 Your cat teleported!",
-                        Toast.LENGTH_LONG).show();
-
                 return;
             }
         }
@@ -719,18 +697,7 @@ public class BattleActivity extends AppCompatActivity {
 
         ImageView cell = playerCells[unit.row][unit.col];
         cell.setBackgroundColor(Color.parseColor("#8B4513"));
-        cell.setImageResource(R.drawable.explosion_icon);
-
-        Toast.makeText(this, "Your " + unit.type + " was DESTROYED!", Toast.LENGTH_LONG).show();
-
-        ImageView finalCell = cell;
-        cell.animate()
-                .scaleX(0.5f)
-                .scaleY(0.5f)
-                .alpha(0.5f)
-                .rotation(360f)
-                .setDuration(800)
-                .start();
+        showDeathEffect(cell);
 
         checkWinCondition();
     }
@@ -742,12 +709,12 @@ public class BattleActivity extends AppCompatActivity {
         cell.setBackgroundColor(Color.parseColor("#2196F3"));
         cell.setImageResource(R.drawable.splash_icon);
         cell.setAlpha(1f);
-
-        Toast.makeText(this, "Miss! Empty cell.", Toast.LENGTH_SHORT).show();
     }
 
     private void endPlayerTurn() {
+        if (gameEnded) return;
         isPlayerTurn = false;
+        resetNeighbourToIdle();
         hasAttackedThisTurn = false;
 
         setEnemyGridClickable(false);
@@ -762,34 +729,32 @@ public class BattleActivity extends AppCompatActivity {
     }
 
     private void aiTakeTurn() {
+        if (gameEnded) return;
         List<SetupActivity.UnitPosition> aliveUnits = new ArrayList<>();
+        SetupActivity.UnitPosition fearedDog = null;
         for (SetupActivity.UnitPosition unit : playerUnits) {
             if (unit.health > 0) {
                 if (unit.type.equals("dog") && unit.dogFearActive) {
+                    fearedDog = unit;
                     continue;
                 }
                 aliveUnits.add(unit);
             }
         }
 
-        if (aliveUnits.isEmpty()) {
-            boolean onlyFearedDogs = false;
-            for (SetupActivity.UnitPosition unit : playerUnits) {
-                if (unit.health > 0 && unit.type.equals("dog") && unit.dogFearActive) {
-                    onlyFearedDogs = true;
-                    break;
-                }
-            }
+        // Clear fear before any early return so it lasts exactly one AI turn
+        if (fearedDog != null) {
+            fearedDog.dogFearActive = false;
+            ImageView fearCell = playerCells[fearedDog.row][fearedDog.col];
+            fearCell.setBackgroundColor(fearedDog.health == 1 ?
+                    Color.parseColor("#FFA500") : Color.parseColor("#608FBC8F"));
+        }
 
-            if (onlyFearedDogs) {
-                for (SetupActivity.UnitPosition unit : playerUnits) {
-                    if (unit.health > 0 && unit.type.equals("dog")) {
-                        unit.dogFearActive = false;
-                        aliveUnits.add(unit);
-                        break;
-                    }
-                }
-            } else {
+        if (aliveUnits.isEmpty()) {
+            for (SetupActivity.UnitPosition unit : playerUnits) {
+                if (unit.health > 0) aliveUnits.add(unit);
+            }
+            if (aliveUnits.isEmpty()) {
                 endGame(false);
                 return;
             }
@@ -842,10 +807,7 @@ public class BattleActivity extends AppCompatActivity {
                 // Create fake "target" for miss
                 currentAITarget = null; // No actual target
 
-                // Show miss immediately
-                Toast.makeText(this, "Enemy attacks empty space at (" + emptyCell[0] + "," + emptyCell[1] + ")!",
-                        Toast.LENGTH_LONG).show();
-
+                playAttackAnimation();
                 showRockFalling(emptyCell[0], emptyCell[1]);
 
                 // Just show splash and continue
@@ -867,25 +829,7 @@ public class BattleActivity extends AppCompatActivity {
             }
         }
 
-        // Clear dog fear if needed
-        if (lastAttackedPlayerUnit != null &&
-                lastAttackedPlayerUnit.type.equals("dog") &&
-                lastAttackedPlayerUnit.dogFearActive) {
-            lastAttackedPlayerUnit.dogFearActive = false;
-
-            ImageView cell = playerCells[lastAttackedPlayerUnit.row][lastAttackedPlayerUnit.col];
-            if (lastAttackedPlayerUnit.health == 1) {
-                cell.setBackgroundColor(Color.parseColor("#FFA500"));
-            } else {
-                cell.setBackgroundColor(Color.parseColor("#8FBC8F"));
-            }
-        }
-
-        // Launch duel for hit
-        Toast.makeText(this, "Enemy attacks your " + currentAITarget.type +
-                        " at (" + currentAITarget.row + "," + currentAITarget.col + ")!",
-                Toast.LENGTH_LONG).show();
-
+        playAttackAnimation();
         showRockFalling(currentAITarget.row, currentAITarget.col);
 
         new Handler().postDelayed(() -> {
@@ -900,15 +844,13 @@ public class BattleActivity extends AppCompatActivity {
         cell.setBackgroundColor(Color.parseColor("#2196F3")); // Blue
         cell.setImageResource(R.drawable.splash_icon);
 
-        Toast.makeText(this, "Enemy missed! Empty cell.", Toast.LENGTH_SHORT).show();
-
         Log.d("BattleActivity", "Showed miss splash at (" + row + "," + col + ")");
     }
 
     private void showRockFalling(int row, int col) {
         ImageView cell = playerCells[row][col];
 
-        int originalColor = Color.parseColor("#8FBC8F");
+        int originalColor = Color.parseColor("#608FBC8F");
         cell.setBackgroundColor(Color.parseColor("#FF6B6B"));
 
         new Handler().postDelayed(() -> {
@@ -930,6 +872,7 @@ public class BattleActivity extends AppCompatActivity {
     }
 
     private void startNextRound() {
+        if (gameEnded) return;
         currentRound++;
         updateRoundCounter();
 
@@ -989,6 +932,9 @@ public class BattleActivity extends AppCompatActivity {
     }
 
     private void endGame(boolean playerWon) {
+        if (gameEnded) return;
+        gameEnded = true;
+
         AppDatabase.databaseWriteExecutor.execute(() -> {
             try {
                 int winnerId = playerWon ? playerId : aiPlayerId;
@@ -1125,15 +1071,7 @@ public class BattleActivity extends AppCompatActivity {
         btnGardenHose.setOnClickListener(v -> {
             if (powerManager.canUseGardenHose() && isPlayerTurn && !hasAttackedThisTurn) {
                 powerManager.activateGardenHose();
-                Toast.makeText(this, "💧 Garden Hose activated! Next attack picks 2 numbers.",
-                        Toast.LENGTH_LONG).show();
                 updatePowerButtons();
-            } else if (hasAttackedThisTurn) {
-                Toast.makeText(this, "Already attacked this turn!", Toast.LENGTH_SHORT).show();
-            } else if (!powerManager.canUseGardenHose()) {
-                int cooldown = powerManager.getGardenHoseCooldown();
-                Toast.makeText(this, "Garden Hose on cooldown: " + cooldown + " rounds",
-                        Toast.LENGTH_SHORT).show();
             }
         });
 
@@ -1141,12 +1079,6 @@ public class BattleActivity extends AppCompatActivity {
         btnNighttimeRelocation.setOnClickListener(v -> {
             if (powerManager.canUseNighttimeRelocation() && isPlayerTurn && !hasAttackedThisTurn) {
                 activateUnitSelectionMode("move");
-            } else if (hasAttackedThisTurn) {
-                Toast.makeText(this, "Already attacked this turn!", Toast.LENGTH_SHORT).show();
-            } else if (!powerManager.canUseNighttimeRelocation()) {
-                int cooldown = powerManager.getNighttimeRelocationCooldown();
-                Toast.makeText(this, "Nighttime Relocation on cooldown: " + cooldown + " rounds",
-                        Toast.LENGTH_SHORT).show();
             }
         });
 
@@ -1154,13 +1086,6 @@ public class BattleActivity extends AppCompatActivity {
         btnTier2Power.setOnClickListener(v -> {
             if (powerManager.canUseTier2Power() && isPlayerTurn && !hasAttackedThisTurn) {
                 handleTier2PowerClick();
-            } else if (hasAttackedThisTurn) {
-                Toast.makeText(this, "Already attacked this turn!", Toast.LENGTH_SHORT).show();
-            } else if (!powerManager.canUseTier2Power()) {
-                int cooldown = powerManager.getTier2PowerCooldown();
-                String powerName = selectedPower.replace("_", " ");
-                Toast.makeText(this, powerName + " on cooldown: " + cooldown + " rounds",
-                        Toast.LENGTH_SHORT).show();
             }
         });
 
@@ -1208,7 +1133,6 @@ public class BattleActivity extends AppCompatActivity {
                 break;
         }
 
-        Toast.makeText(this, message + "\n(Tap outside grid to cancel)", Toast.LENGTH_LONG).show();
         tvTurnIndicator.setText(message);
     }
 
@@ -1285,7 +1209,6 @@ public class BattleActivity extends AppCompatActivity {
         }
 
         if (unit == null) {
-            Toast.makeText(this, "No unit here!", Toast.LENGTH_SHORT).show();
             return;
         }
 
@@ -1330,7 +1253,6 @@ public class BattleActivity extends AppCompatActivity {
 
         // Validate move
         if (newRow < 0 || newRow >= 8 || newCol < 0 || newCol >= 8) {
-            Toast.makeText(this, "Can't move outside the grid!", Toast.LENGTH_SHORT).show();
             cancelPowerMode();
             return;
         }
@@ -1338,7 +1260,6 @@ public class BattleActivity extends AppCompatActivity {
         // Check if new position is occupied
         for (SetupActivity.UnitPosition u : playerUnits) {
             if (u.row == newRow && u.col == newCol && u.health > 0) {
-                Toast.makeText(this, "Cell is occupied!", Toast.LENGTH_SHORT).show();
                 cancelPowerMode();
                 return;
             }
@@ -1350,11 +1271,9 @@ public class BattleActivity extends AppCompatActivity {
         // Clear old cell
         oldCell.setImageDrawable(null);
         oldCell.setTag(null);
-        oldCell.setBackgroundColor(Color.parseColor("#8FBC8F"));
+        oldCell.setBackgroundColor(Color.parseColor("#608FBC8F"));
 
         // Update unit position
-        int oldRow = unit.row;
-        int oldCol = unit.col;
         unit.row = newRow;
         unit.col = newCol;
 
@@ -1375,9 +1294,6 @@ public class BattleActivity extends AppCompatActivity {
         // FIX: Use the power and update cooldown
         powerManager.useNighttimeRelocation();
         savePowerUsageToDatabase("nighttime_relocation");
-
-        Toast.makeText(this, "🌙 " + unit.type + " moved from (" + oldRow + "," + oldCol +
-                ") to (" + newRow + "," + newCol + ")!", Toast.LENGTH_LONG).show();
 
         // Exit power mode
         cancelPowerMode();
@@ -1408,9 +1324,6 @@ public class BattleActivity extends AppCompatActivity {
                 })
                 .start();
 
-        Toast.makeText(this, "🛡️ " + unit.type + " is now protected from next attack!",
-                Toast.LENGTH_LONG).show();
-
         savePowerUsageToDatabase("fence_shield");
 
         cancelPowerMode();
@@ -1420,7 +1333,6 @@ public class BattleActivity extends AppCompatActivity {
     private void handleFertilizer(SetupActivity.UnitPosition unit) {
         // Check if unit needs healing
         if (unit.health >= 2) {
-            Toast.makeText(this, unit.type + " is already at full health!", Toast.LENGTH_SHORT).show();
             cancelPowerMode();
             return;
         }
@@ -1431,7 +1343,7 @@ public class BattleActivity extends AppCompatActivity {
         ImageView cell = playerCells[unit.row][unit.col];
 
         // Restore green background (full health)
-        cell.setBackgroundColor(Color.parseColor("#8FBC8F"));
+        cell.setBackgroundColor(Color.parseColor("#608FBC8F"));
 
         // Update icon
         if (unit.type.equals("rose")) {
@@ -1458,8 +1370,6 @@ public class BattleActivity extends AppCompatActivity {
         powerManager.useTier2Power();
         savePowerUsageToDatabase("fertilizer");
 
-        Toast.makeText(this, "🌱 " + unit.type + " healed to full HP!", Toast.LENGTH_LONG).show();
-
         cancelPowerMode();
         updatePowerButtons();
     }
@@ -1470,8 +1380,6 @@ public class BattleActivity extends AppCompatActivity {
     }
 
     private void revealAreaWithSpyDrone(int centerRow, int centerCol) {
-        int revealed = 0;
-
         for (int row = centerRow - 1; row <= centerRow + 1; row++) {
             for (int col = centerCol - 1; col <= centerCol + 1; col++) {
                 if (row >= 0 && row < 8 && col >= 0 && col < 8) {
@@ -1495,17 +1403,12 @@ public class BattleActivity extends AppCompatActivity {
                             cell.setBackgroundColor(Color.parseColor("#C5E1A5"));
                             cell.setAlpha(1f);
                         }
-
-                        revealed++;
                     }
                 }
             }
         }
 
         powerManager.useTier2Power();
-
-        Toast.makeText(this, "🐝 Revealed " + revealed + " cells!", Toast.LENGTH_LONG).show();
-
         savePowerUsageToDatabase("spy_drone");
 
         isSelectingUnitForPower = false;

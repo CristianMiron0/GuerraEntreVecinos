@@ -155,6 +155,7 @@ public class MiniDuelActivity extends AppCompatActivity {
 
                 Intent resultIntent = new Intent();
                 resultIntent.putExtra(EXTRA_WAS_HIT, false);
+                resultIntent.putExtra("IS_PLAYER_ATTACKING", isPlayerAttacking);
                 resultIntent.putExtra(EXTRA_TARGET_ROW,
                         getIntent().getIntExtra(EXTRA_TARGET_ROW, -1));
                 resultIntent.putExtra(EXTRA_TARGET_COL,
@@ -555,6 +556,7 @@ public class MiniDuelActivity extends AppCompatActivity {
     private void returnToGame(boolean wasHit) {
         Intent resultIntent = new Intent();
         resultIntent.putExtra(EXTRA_WAS_HIT, wasHit);
+        resultIntent.putExtra("IS_PLAYER_ATTACKING", isPlayerAttacking);
         resultIntent.putExtra(EXTRA_TARGET_ROW,
                 getIntent().getIntExtra(EXTRA_TARGET_ROW, -1));
         resultIntent.putExtra(EXTRA_TARGET_COL,

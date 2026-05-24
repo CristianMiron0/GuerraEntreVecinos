@@ -2,9 +2,7 @@ package com.example.guerraentrevecinos;
 
 import android.content.Context;
 import android.util.Log;
-import android.view.View;
 import android.widget.ImageView;
-import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -12,11 +10,9 @@ import java.util.Random;
 
 public class AbilityManager {
 
-    private Context context;
-    private Random random;
+    private final Random random;
 
     public AbilityManager(Context context) {
-        this.context = context;
         this.random = new Random();
     }
 
@@ -29,28 +25,10 @@ public class AbilityManager {
         rose.roseColor = colors[random.nextInt(colors.length)];
         rose.abilityUsed = true;
 
-        // Update visual
+        // Update visual immediately so it's never overridden by a cancelled animation
         int newIcon = getRoseIconByColor(rose.roseColor);
+        cellView.setImageResource(newIcon);
 
-        // Spin animation
-        cellView.animate()
-                .rotation(360f)
-                .scaleX(1.3f)
-                .scaleY(1.3f)
-                .setDuration(500)
-                .withEndAction(() -> {
-                    cellView.setImageResource(newIcon);
-                    cellView.setRotation(0f);
-                    cellView.animate()
-                            .scaleX(1f)
-                            .scaleY(1f)
-                            .setDuration(200)
-                            .start();
-                })
-                .start();
-
-        String colorName = rose.roseColor.substring(0, 1).toUpperCase() + rose.roseColor.substring(1);
-        Toast.makeText(context, "🌹 Rose changed to " + colorName + "!", Toast.LENGTH_SHORT).show();
     }
 
     // ✅ Dog: Fear ability (can't be attacked twice in row)
@@ -95,8 +73,6 @@ public class AbilityManager {
                 })
                 .start();
 
-        Toast.makeText(context, "🐕 Dog activated FEAR! Enemy can't attack it next turn!",
-                Toast.LENGTH_LONG).show();
     }
 
     // Cat: Teleport to random empty cell

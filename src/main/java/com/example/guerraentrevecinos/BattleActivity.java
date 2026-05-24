@@ -431,7 +431,7 @@ public class BattleActivity extends AppCompatActivity {
             if (unit.type.equals("rose")) {
                 cell.setImageResource(abilityManager.getRoseIcon(unit));
             } else {
-                cell.setImageResource(getUnitIcon(unit.type));
+                cell.setImageResource(getUnitIcon(unit.type, true));
             }
             cell.setAlpha(1f);
 
@@ -1042,7 +1042,7 @@ public class BattleActivity extends AppCompatActivity {
         tvRoundCounter.setText("Round: " + currentRound + "/" + MAX_ROUNDS);
     }
 
-    private int getUnitIcon(String unitType) {
+    private int getUnitIcon(String unitType, boolean isEnemy) {
         switch (unitType) {
             case "sunflower":
                 return R.drawable.sunflower_icon;
@@ -1051,10 +1051,14 @@ public class BattleActivity extends AppCompatActivity {
             case "dog":
                 return R.drawable.dog_icon;
             case "cat":
-                return R.drawable.cat_icon;
+                return isEnemy ? R.drawable.cat_enemy : R.drawable.cat_icon;
             default:
                 return R.drawable.sunflower_icon;
         }
+    }
+
+    private int getUnitIcon(String unitType) {
+        return getUnitIcon(unitType, false);
     }
 
     private void saveMoveToDatabase(int targetRow, int targetCol, boolean wasHit,
@@ -1480,7 +1484,7 @@ public class BattleActivity extends AppCompatActivity {
                         for (SetupActivity.UnitPosition unit : aiUnits) {
                             if (unit.row == row && unit.col == col && unit.health > 0) {
                                 cell.setBackgroundColor(Color.parseColor("#FFE082"));
-                                cell.setImageResource(getUnitIcon(unit.type));
+                                cell.setImageResource(getUnitIcon(unit.type, true));
                                 cell.setAlpha(1f);
                                 hasUnit = true;
                                 break;

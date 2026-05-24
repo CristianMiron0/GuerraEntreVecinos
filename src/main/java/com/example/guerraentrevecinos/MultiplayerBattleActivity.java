@@ -423,7 +423,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
                 for (SetupActivity.UnitPosition unit : playerUnits) {
                     if (unit.row == row && unit.col == col) {
-                        cell.setImageResource(getUnitIcon(unit.type));
+                        cell.setImageResource(getUnitIcon(unit.type, true));
                         cell.setTag(unit);
                         break;
                     }
@@ -1365,7 +1365,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                 }
 
                 cell.setImageResource(unit.type.equals("rose") ?
-                        abilityManager.getRoseIcon(unit) : getUnitIcon(unit.type));
+                        abilityManager.getRoseIcon(unit) : getUnitIcon(unit.type, true));
 
                 ImageView finalCell1 = cell;
                 cell.animate()
@@ -2002,7 +2002,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                 .show();
     }
 
-    private int getUnitIcon(String unitType) {
+    private int getUnitIcon(String unitType, boolean isEnemy) {
         switch (unitType) {
             case "sunflower":
                 return R.drawable.sunflower_icon;
@@ -2011,10 +2011,14 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
             case "dog":
                 return R.drawable.dog_icon;
             case "cat":
-                return R.drawable.cat_icon;
+                return isEnemy ? R.drawable.cat_enemy : R.drawable.cat_icon;
             default:
                 return R.drawable.sunflower_icon;
         }
+    }
+
+    private int getUnitIcon(String unitType) {
+        return getUnitIcon(unitType, false);
     }
 
     // ✅ Helper method to find unit at position
@@ -2126,7 +2130,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
         // Update new cell
         ImageView newCell = playerCells[newRow][newCol];
-        newCell.setImageResource(getUnitIcon(unit.type));
+        newCell.setImageResource(getUnitIcon(unit.type, true));
         newCell.setTag(unit);
 
         // Animate move
@@ -2198,7 +2202,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         unit.col = newCol;
 
         ImageView newCell = playerCells[newRow][newCol];
-        newCell.setImageResource(getUnitIcon(unit.type));
+        newCell.setImageResource(getUnitIcon(unit.type, true));
         newCell.setTag(unit);
         newCell.setScaleX(0.3f);
         newCell.setScaleY(0.3f);
@@ -2263,7 +2267,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                             if (unit.row == row && unit.col == col && unit.health > 0) {
                                 // Found a unit! Show it
                                 cell.setBackgroundColor(Color.parseColor("#FFE082")); // Yellow
-                                cell.setImageResource(getUnitIcon(unit.type));
+                                cell.setImageResource(getUnitIcon(unit.type, true));
                                 cell.setAlpha(1f);
                                 hasUnit = true;
 

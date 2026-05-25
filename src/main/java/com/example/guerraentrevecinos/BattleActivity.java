@@ -580,7 +580,7 @@ public class BattleActivity extends AppCompatActivity {
 
                     // Show at new position
                     ImageView newCell = playerCells[newRow][newCol];
-                    newCell.setImageResource(R.drawable.cat_icon);
+                    newCell.setImageResource(SkinManager.isCatSkinActive(this) ? R.drawable.cat_skin : R.drawable.cat_icon);
                     newCell.setTag(unit);
                     newCell.setBackgroundColor(Color.parseColor("#4CAF50")); // Bright green
 
@@ -676,7 +676,7 @@ public class BattleActivity extends AppCompatActivity {
 
                 // Show at new position
                 ImageView newCell = playerCells[newRow][newCol];
-                newCell.setImageResource(R.drawable.cat_icon);
+                newCell.setImageResource(SkinManager.isCatSkinActive(this) ? R.drawable.cat_skin : R.drawable.cat_icon);
                 newCell.setTag(unit);
                 newCell.setBackgroundColor(Color.parseColor("#4CAF50"));
 
@@ -941,14 +941,6 @@ public class BattleActivity extends AppCompatActivity {
 
                 database.gameDao().finishGame(gameId, winnerId, System.currentTimeMillis());
 
-                if (playerWon) {
-                    database.playerDao().incrementWins(playerId);
-                    database.playerDao().incrementLosses(aiPlayerId);
-                } else {
-                    database.playerDao().incrementWins(aiPlayerId);
-                    database.playerDao().incrementLosses(playerId);
-                }
-
                 GameStats playerStats = database.gameStatsDao().getStatsByGameAndPlayer(gameId, playerId);
                 if (playerStats != null && playerStats.getTotalAttacks() > 0) {
                     float accuracy = (playerStats.getSuccessfulHits() * 100f) / playerStats.getTotalAttacks();
@@ -991,13 +983,16 @@ public class BattleActivity extends AppCompatActivity {
     private int getUnitIcon(String unitType, boolean isEnemy) {
         switch (unitType) {
             case "sunflower":
-                return R.drawable.sunflower_icon;
+                return (!isEnemy && SkinManager.isSunflowerSkinActive(this))
+                        ? R.drawable.sunflower_skin : R.drawable.sunflower_icon;
             case "rose":
                 return R.drawable.rose_red;
             case "dog":
-                return R.drawable.dog_icon;
+                return (!isEnemy && SkinManager.isDogSkinActive(this))
+                        ? R.drawable.dog_skin : R.drawable.dog_icon;
             case "cat":
-                return isEnemy ? R.drawable.cat_enemy : R.drawable.cat_icon;
+                if (isEnemy) return R.drawable.cat_enemy;
+                return SkinManager.isCatSkinActive(this) ? R.drawable.cat_skin : R.drawable.cat_icon;
             default:
                 return R.drawable.sunflower_icon;
         }

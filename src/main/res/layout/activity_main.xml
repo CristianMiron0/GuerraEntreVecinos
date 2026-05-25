@@ -55,6 +55,23 @@
         app:cornerRadius="16dp"
         app:backgroundTint="#FF9800"
         app:layout_constraintTop_toBottomOf="@id/btnStartGame"
+        app:layout_constraintBottom_toTopOf="@id/btnShop"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintWidth_percent="0.8"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Shop Button -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnShop"
+        android:layout_width="0dp"
+        android:layout_height="56dp"
+        android:text="🛒 SHOP"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:cornerRadius="16dp"
+        app:backgroundTint="#9C27B0"
+        app:layout_constraintTop_toBottomOf="@id/btnStatistics"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"

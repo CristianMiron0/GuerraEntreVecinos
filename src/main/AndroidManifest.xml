@@ -85,6 +85,12 @@
             android:screenOrientation="portrait"
             android:exported="false" />
 
+        <!-- Shop -->
+        <activity
+            android:name=".ShopActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
 
     </application>
 

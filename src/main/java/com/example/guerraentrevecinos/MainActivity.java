@@ -34,6 +34,16 @@ public class MainActivity extends AppCompatActivity {
                 startActivity(intent);
             }, 150);
         });
+
+        // Shop button
+        binding.btnShop.setOnClickListener(v -> {
+            animateButtonPress(v);
+
+            v.postDelayed(() -> {
+                Intent intent = new Intent(MainActivity.this, ShopActivity.class);
+                startActivity(intent);
+            }, 150);
+        });
     }
 
     private void animateButtonPress(android.view.View button) {

@@ -316,10 +316,6 @@ public class SetupActivity extends AppCompatActivity {
                 database.gameStatsDao().insert(new GameStats((int) gameId, humanPlayer.getPlayerId()));
                 database.gameStatsDao().insert(new GameStats((int) gameId, aiPlayer.getPlayerId()));
 
-                // 7. Update player game counts
-                database.playerDao().incrementGamesPlayed(humanPlayer.getPlayerId());
-                database.playerDao().incrementGamesPlayed(aiPlayer.getPlayerId());
-
                 // 8. Launch battle activity
                 Player finalHumanPlayer = humanPlayer;
                 Player finalAiPlayer = aiPlayer;
@@ -380,13 +376,13 @@ public class SetupActivity extends AppCompatActivity {
     private int getUnitIcon(String unitType) {
         switch (unitType) {
             case "sunflower":
-                return R.drawable.sunflower_icon;
+                return SkinManager.isSunflowerSkinActive(this) ? R.drawable.sunflower_skin : R.drawable.sunflower_icon;
             case "rose":
                 return R.drawable.rose_icon;
             case "dog":
-                return R.drawable.dog_icon;
+                return SkinManager.isDogSkinActive(this) ? R.drawable.dog_skin : R.drawable.dog_icon;
             case "cat":
-                return R.drawable.cat_icon;
+                return SkinManager.isCatSkinActive(this) ? R.drawable.cat_skin : R.drawable.cat_icon;
             default:
                 return R.drawable.sunflower_icon;
         }

@@ -567,10 +567,10 @@ public class MiniDuelActivity extends AppCompatActivity {
 
     private int getUnitIcon(String unitType) {
         switch (unitType) {
-            case "sunflower": return R.drawable.sunflower_icon;
+            case "sunflower": return SkinManager.isSunflowerSkinActive(this) ? R.drawable.sunflower_skin : R.drawable.sunflower_icon;
             case "rose": return R.drawable.rose_icon;
-            case "dog": return R.drawable.dog_icon;
-            case "cat": return R.drawable.cat_icon;
+            case "dog": return SkinManager.isDogSkinActive(this) ? R.drawable.dog_skin : R.drawable.dog_icon;
+            case "cat": return SkinManager.isCatSkinActive(this) ? R.drawable.cat_skin : R.drawable.cat_icon;
             default: return R.drawable.sunflower_icon;
         }
     }

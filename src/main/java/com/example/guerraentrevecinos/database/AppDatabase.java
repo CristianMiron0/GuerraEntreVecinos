@@ -67,6 +67,36 @@ public abstract class AppDatabase extends RoomDatabase {
         public void onCreate(@NonNull SupportSQLiteDatabase db) {
             super.onCreate(db);
 
+            // Trigger 1a: increment total_games for player1 on new game
+            db.execSQL("CREATE TRIGGER trg_total_games_p1 " +
+                    "AFTER INSERT ON games FOR EACH ROW BEGIN " +
+                    "UPDATE players SET total_games = total_games + 1 WHERE player_id = NEW.player1_id; END");
+
+            // Trigger 1b: increment total_games for player2 on new game
+            db.execSQL("CREATE TRIGGER trg_total_games_p2 " +
+                    "AFTER INSERT ON games FOR EACH ROW BEGIN " +
+                    "UPDATE players SET total_games = total_games + 1 WHERE player_id = NEW.player2_id; END");
+
+            // Trigger 2a: increment wins for the winner when game finishes
+            db.execSQL("CREATE TRIGGER trg_update_wins " +
+                    "AFTER UPDATE OF winner_id ON games FOR EACH ROW " +
+                    "WHEN NEW.winner_id IS NOT NULL AND OLD.winner_id IS NULL BEGIN " +
+                    "UPDATE players SET total_wins = total_wins + 1 WHERE player_id = NEW.winner_id; END");
+
+            // Trigger 2b: increment losses for the loser when game finishes
+            db.execSQL("CREATE TRIGGER trg_update_losses " +
+                    "AFTER UPDATE OF winner_id ON games FOR EACH ROW " +
+                    "WHEN NEW.winner_id IS NOT NULL AND OLD.winner_id IS NULL BEGIN " +
+                    "UPDATE players SET total_losses = total_losses + 1 " +
+                    "WHERE player_id = CASE WHEN NEW.winner_id = NEW.player1_id THEN NEW.player2_id ELSE NEW.player1_id END; END");
+
+            // Trigger 3: recalculate accuracy whenever attacks or hits change
+            db.execSQL("CREATE TRIGGER trg_calculate_accuracy " +
+                    "AFTER UPDATE OF total_attacks, successful_hits ON game_stats FOR EACH ROW " +
+                    "WHEN NEW.total_attacks > 0 BEGIN " +
+                    "UPDATE game_stats SET accuracy_percentage = (CAST(NEW.successful_hits AS REAL) / NEW.total_attacks) * 100 " +
+                    "WHERE stat_id = NEW.stat_id; END");
+
             // Seed initial data
             databaseWriteExecutor.execute(() -> {
                 // Seed units

@@ -25,7 +25,7 @@ public class MainActivity extends AppCompatActivity {
             }, 150);
         });
 
-        // ✅ Statistics button
+        // Statistics button
         binding.btnStatistics.setOnClickListener(v -> {
             animateButtonPress(v);
 

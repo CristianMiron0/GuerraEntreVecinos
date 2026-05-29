@@ -19,14 +19,14 @@ public class GameModeActivity extends AppCompatActivity {
         binding.btnSoloMode.setOnClickListener(v -> {
             animateButtonPress(v);
             v.postDelayed(() -> {
-                // ✅ Go to power selection first
+                // Go to power selection first
                 Intent intent = new Intent(this, PowerSelectionActivity.class);
                 intent.putExtra("GAME_MODE", "SOLO");
                 startActivity(intent);
             }, 150);
         });
 
-        // ✅ Multiplayer Mode (NOW ENABLED!)
+        // Multiplayer Mode
         binding.btnMultiplayerMode.setEnabled(true);
         binding.btnMultiplayerMode.setAlpha(1f);
         binding.btnMultiplayerMode.setOnClickListener(v -> {

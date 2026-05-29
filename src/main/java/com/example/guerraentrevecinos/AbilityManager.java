@@ -16,32 +16,31 @@ public class AbilityManager {
         this.random = new Random();
     }
 
-    // ✅ Rose: Change color after hit
+    // Rose change color after hit
     public void activateRoseColorChange(SetupActivity.UnitPosition rose, ImageView cellView) {
         if (rose.abilityUsed) return;
 
-        // Random color (exclude red since that's the starting color)
+        // Random color
         String[] colors = {"blue", "white", "black"};
         rose.roseColor = colors[random.nextInt(colors.length)];
         rose.abilityUsed = true;
 
-        // Update visual immediately so it's never overridden by a cancelled animation
+        // Update visual immediately
         int newIcon = getRoseIconByColor(rose.roseColor);
         cellView.setImageResource(newIcon);
 
     }
 
-    // ✅ Dog: Fear ability (can't be attacked twice in row)
+    // Dog fear ability
     public void activateDogFear(SetupActivity.UnitPosition dog, ImageView cellView) {
         if (dog.abilityUsed) return;
-
         dog.dogFearActive = true;
         dog.abilityUsed = true;
 
         // Visual: Yellow glow + shake
         cellView.setBackgroundColor(android.graphics.Color.parseColor("#FFD54F")); // Yellow
 
-        // Bark animation (shake)
+        // Bark animation
         cellView.animate()
                 .translationX(-15f)
                 .setDuration(50)
@@ -75,20 +74,18 @@ public class AbilityManager {
 
     }
 
-    // Cat: Teleport to random empty cell
+    // Cat teleport to random empty cell
     public boolean activateCatTeleport(
             SetupActivity.UnitPosition cat,
             List<SetupActivity.UnitPosition> allUnits) {
 
-        Log.d("AbilityManager", "====================================");
-        Log.d("AbilityManager", "CAT TELEPORT ACTIVATED");
+        Log.d("AbilityManager", "Cat teleport activated");
         Log.d("AbilityManager", "Current position: (" + cat.row + "," + cat.col + ")");
         Log.d("AbilityManager", "Current health: " + cat.health);
         Log.d("AbilityManager", "Ability used before: " + cat.abilityUsed);
-        Log.d("AbilityManager", "====================================");
 
         if (cat.abilityUsed) {
-            Log.w("AbilityManager", "❌ Cat ability already used!");
+            Log.w("AbilityManager", "Cat ability used!");
             return false;
         }
 
@@ -97,7 +94,7 @@ public class AbilityManager {
 
         for (int row = 0; row < 8; row++) {
             for (int col = 0; col < 8; col++) {
-                // Check if cell is empty (no unit at this position)
+                // Check if cell is empty
                 boolean isEmpty = true;
 
                 for (SetupActivity.UnitPosition unit : allUnits) {
@@ -116,7 +113,7 @@ public class AbilityManager {
         Log.d("AbilityManager", "Found " + emptyCells.size() + " empty cells");
 
         if (emptyCells.isEmpty()) {
-            Log.e("AbilityManager", "❌ CAT TELEPORT FAILED - No empty cells available!");
+            Log.e("AbilityManager", "Cat teleport failed");
             return false;
         }
 
@@ -134,16 +131,15 @@ public class AbilityManager {
         cat.abilityUsed = true;
         cat.health = 1; // Cat survives with 1 HP
 
-        Log.d("AbilityManager", "✅ CAT TELEPORTED SUCCESSFULLY");
-        Log.d("AbilityManager", "   New position: (" + cat.row + "," + cat.col + ")");
-        Log.d("AbilityManager", "   New health: " + cat.health);
-        Log.d("AbilityManager", "   Ability now used: " + cat.abilityUsed);
-        Log.d("AbilityManager", "====================================");
+        Log.d("AbilityManager", "Cat teleported succesfuly");
+        Log.d("AbilityManager", "New position: (" + cat.row + "," + cat.col + ")");
+        Log.d("AbilityManager", "New health: " + cat.health);
+        Log.d("AbilityManager", "Ability now used: " + cat.abilityUsed);
 
         return true;
     }
 
-    // Helper: Get rose icon by color
+    // Helper to get rose icon by color
     private int getRoseIconByColor(String color) {
         switch (color) {
             case "red":
@@ -159,7 +155,7 @@ public class AbilityManager {
         }
     }
 
-    // Helper: Get current rose icon
+    // Helper to get current rose icon
     public int getRoseIcon(SetupActivity.UnitPosition rose) {
         return getRoseIconByColor(rose.roseColor);
     }

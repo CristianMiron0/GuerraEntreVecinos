@@ -30,7 +30,7 @@ public class FirebaseManager {
             // Initialize Firebase Database with your URL
             database = FirebaseDatabase.getInstance("https://guerraentrevecinos-default-rtdb.europe-west1.firebasedatabase.app/");
 
-            // Enable offline persistence (but only once)
+            // Enable offline persistence
             try {
                 database.setPersistenceEnabled(true);
             } catch (Exception e) {
@@ -42,7 +42,7 @@ public class FirebaseManager {
             isInitialized = true;
             Log.d(TAG, "Firebase initialized successfully");
 
-            // ✅ FIX: Sign in immediately!
+            // Sign in immediately!
             signInAnonymously();
 
         } catch (Exception e) {

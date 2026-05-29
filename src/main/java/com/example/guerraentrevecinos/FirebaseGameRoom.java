@@ -15,9 +15,7 @@ public class FirebaseGameRoom {
     public GameStateData gameState;
     public LastActionData lastAction;
 
-    public FirebaseGameRoom() {
-        // Required empty constructor for Firebase
-    }
+    public FirebaseGameRoom() {}
 
     public FirebaseGameRoom(String roomCode) {
         this.roomCode = roomCode;

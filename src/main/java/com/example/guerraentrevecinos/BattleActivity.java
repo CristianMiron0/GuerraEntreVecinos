@@ -248,7 +248,7 @@ public class BattleActivity extends AppCompatActivity {
         tvTurnIndicator.setText("YOUR TURN - ATTACK!");
         tvTurnIndicator.setTextColor(getColor(android.R.color.holo_green_dark));
 
-        // Show enemy garden (for attacking)
+        // Show enemy garden
         playerGardenSection.setVisibility(View.GONE);
         enemyGardenSection.setVisibility(View.VISIBLE);
 
@@ -397,7 +397,7 @@ public class BattleActivity extends AppCompatActivity {
             if (unit.health <= 0) {
                 Log.d("BattleActivity", "Enemy unit died from partial hit!");
 
-                // CAT TELEPORT on death
+                // Cat teleport on death
                 if (unit.type.equals("cat") && !unit.abilityUsed) {
                     Log.d("BattleActivity", "🐱 AI Cat teleporting after partial hit death!");
 
@@ -468,7 +468,7 @@ public class BattleActivity extends AppCompatActivity {
         }
 
         if (unit != null) {
-            // CAT TELEPORT
+            // Cat teleport
             if (unit.type.equals("cat") && !unit.abilityUsed) {
                 Log.d("BattleActivity", "🐱 AI Cat teleporting!");
 
@@ -488,7 +488,7 @@ public class BattleActivity extends AppCompatActivity {
                     // Clear old position
                     ImageView oldCell = enemyCells[oldRow][oldCol];
                     enemyRevealedCells[oldRow][oldCol] = true;
-                    oldCell.setBackgroundColor(Color.parseColor("#C5E1A5")); // Light green (empty)
+                    oldCell.setBackgroundColor(Color.parseColor("#C5E1A5")); // Light green
                     oldCell.setImageDrawable(null);
                     oldCell.setAlpha(1f);
 
@@ -555,7 +555,7 @@ public class BattleActivity extends AppCompatActivity {
         if (unit.health <= 0) {
             Log.d("BattleActivity", "Player unit died from partial hit!");
 
-            // CAT TELEPORT
+            // Cat teleport
             if (unit.type.equals("cat") && !unit.abilityUsed) {
                 Log.d("BattleActivity", "🐱 Player Cat teleporting!");
 
@@ -654,7 +654,7 @@ public class BattleActivity extends AppCompatActivity {
             return;
         }
 
-        // CAT TELEPORT (direct hit)
+        // Cat teleport in case of direct hit
         if (unit.type.equals("cat") && !unit.abilityUsed) {
             Log.d("BattleActivity", "🐱 Player Cat teleporting (direct hit)!");
 
@@ -762,10 +762,7 @@ public class BattleActivity extends AppCompatActivity {
 
         Random random = new Random();
 
-        // ========================================
-        // SMART AI: Decide whether to hit or miss
-        // Pattern: Miss, Miss, Hit, Miss, Miss, Hit...
-        // ========================================
+        // AI attacking pattern
         aiAttackCount++;
         boolean shouldHit = (aiAttackCount % AI_HIT_PATTERN == 0);
 
@@ -1062,7 +1059,7 @@ public class BattleActivity extends AppCompatActivity {
                 break;
         }
 
-        // FIX: Garden Hose button
+        // Garden Hose button
         btnGardenHose.setOnClickListener(v -> {
             if (powerManager.canUseGardenHose() && isPlayerTurn && !hasAttackedThisTurn) {
                 powerManager.activateGardenHose();
@@ -1070,14 +1067,14 @@ public class BattleActivity extends AppCompatActivity {
             }
         });
 
-        // FIX: Nighttime Relocation button
+        // Nighttime Relocation button
         btnNighttimeRelocation.setOnClickListener(v -> {
             if (powerManager.canUseNighttimeRelocation() && isPlayerTurn && !hasAttackedThisTurn) {
                 activateUnitSelectionMode("move");
             }
         });
 
-        // FIX: Tier 2 Power button
+        // Tier 2 Power button
         btnTier2Power.setOnClickListener(v -> {
             if (powerManager.canUseTier2Power() && isPlayerTurn && !hasAttackedThisTurn) {
                 handleTier2PowerClick();
@@ -1132,7 +1129,7 @@ public class BattleActivity extends AppCompatActivity {
     }
 
     private void updatePowerButtons() {
-        // ✅ Garden Hose
+        // Garden Hose
         if (powerManager.isGardenHoseActive()) {
             btnGardenHose.setEnabled(false);
             btnGardenHose.setText("💧\nActive");
@@ -1148,7 +1145,7 @@ public class BattleActivity extends AppCompatActivity {
             btnGardenHose.setAlpha(0.5f);
         }
 
-        // ✅ Nighttime Relocation
+        // Nighttime Relocation
         if (powerManager.canUseNighttimeRelocation() && !hasAttackedThisTurn) {
             btnNighttimeRelocation.setEnabled(true);
             btnNighttimeRelocation.setText("🌙\nMove");
@@ -1160,7 +1157,7 @@ public class BattleActivity extends AppCompatActivity {
             btnNighttimeRelocation.setAlpha(0.5f);
         }
 
-        // ✅ Tier 2 Power
+        // Tier 2 Power
         String icon = "";
         String name = "";
         switch (selectedPower) {
@@ -1260,7 +1257,7 @@ public class BattleActivity extends AppCompatActivity {
             }
         }
 
-        // FIX: Actually move the unit!
+        // Actually move the unit!
         ImageView oldCell = playerCells[unit.row][unit.col];
 
         // Clear old cell
@@ -1286,7 +1283,7 @@ public class BattleActivity extends AppCompatActivity {
                 .setDuration(400)
                 .start();
 
-        // FIX: Use the power and update cooldown
+        // Use the power and update cooldown
         powerManager.useNighttimeRelocation();
         savePowerUsageToDatabase("nighttime_relocation");
 
@@ -1296,13 +1293,13 @@ public class BattleActivity extends AppCompatActivity {
     }
 
     private void handleFenceShield(SetupActivity.UnitPosition unit) {
-        // ✅ Set fence protection
+        // Set fence protection
         powerManager.setFenceProtectedUnit(unit);
         powerManager.useTier2Power();
 
         ImageView cell = playerCells[unit.row][unit.col];
 
-        // ✅ Visual indicator - teal/cyan color
+        // Visual indicator - cyan color
         cell.setBackgroundColor(Color.parseColor("#4DB6AC"));
 
         // Shield animation

@@ -112,7 +112,7 @@ public class MiniDuelActivity extends AppCompatActivity {
 
                 // Both choices ready?
                 if (attackChoice != null && defendChoice != null) {
-                    Log.d(TAG, "✅ Both choices available!");
+                    Log.d(TAG, "Both choices available!");
 
                     // Set enemy choices based on our role
                     if (isPlayerAttacking) {
@@ -150,7 +150,7 @@ public class MiniDuelActivity extends AppCompatActivity {
         // Timeout after 30 seconds
         timeoutHandler.postDelayed(() -> {
             if (choiceLocked) {
-                Log.w(TAG, "⏰ TIMEOUT - opponent didn't respond");
+                Log.w(TAG, "TIMEOUT - opponent didn't respond");
                 Toast.makeText(this, "Opponent timeout", Toast.LENGTH_SHORT).show();
 
                 Intent resultIntent = new Intent();
@@ -353,10 +353,10 @@ public class MiniDuelActivity extends AppCompatActivity {
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 snapshot.getRef().child("currentDuel").updateChildren(duelData)
                         .addOnSuccessListener(aVoid -> {
-                            Log.d(TAG, "✅ Choice saved: " + duelData);
+                            Log.d(TAG, "Choice saved: " + duelData);
                         })
                         .addOnFailureListener(e -> {
-                            Log.e(TAG, "❌ Save failed: " + e.getMessage());
+                            Log.e(TAG, "Save failed: " + e.getMessage());
                         });
 
                 snapshot.getRef().removeEventListener(this);
@@ -375,11 +375,11 @@ public class MiniDuelActivity extends AppCompatActivity {
         // Calculate result
         if (isGardenHoseActive) {
             if (isPlayerAttacking) {
-                // Attacker with hose: hit if defender matches either choice
+                // Attacker with hose
                 wasHit = (enemyChoice == playerChoice ||
                         enemyChoice == playerSecondChoice);
             } else {
-                // Defender against hose: hit if matches either attacker choice
+                // Defender against hose
                 wasHit = (playerChoice == enemyChoice ||
                         playerChoice == enemySecondChoice);
             }

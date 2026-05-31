@@ -408,7 +408,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
                 for (SetupActivity.UnitPosition unit : playerUnits) {
                     if (unit.row == row && unit.col == col) {
-                        cell.setImageResource(getUnitIcon(unit.type, true));
+                        cell.setImageResource(getUnitIcon(unit.type, false));
                         cell.setTag(unit);
                         break;
                     }
@@ -1320,7 +1320,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                     }, 400);
                 } else {
                     cell.setImageResource(unit.type.equals("rose") ?
-                            abilityManager.getRoseIcon(unit) : getUnitIcon(unit.type, true));
+                            abilityManager.getRoseIcon(unit) : getUnitIcon(unit.type, false));
 
                     ImageView finalCell1 = cell;
                     cell.animate()

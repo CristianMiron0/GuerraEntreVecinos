@@ -176,6 +176,10 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
                         if (row != null && col != null && type != null && health != null) {
                             SetupActivity.UnitPosition unit = new SetupActivity.UnitPosition(row, col, type, health);
+                            String roseColor = unitSnapshot.child("roseColor").getValue(String.class);
+                            Boolean abilityUsed = unitSnapshot.child("abilityUsed").getValue(Boolean.class);
+                            if (roseColor != null) unit.roseColor = roseColor;
+                            if (abilityUsed != null) unit.abilityUsed = abilityUsed;
                             enemyUnits.add(unit);
                             loadedCount++;
                             Log.d(TAG, "Loaded: " + type + " at (" + row + "," + col + ")");
@@ -572,7 +576,12 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                         Integer health = unitSnap.child("health").getValue(Integer.class);
 
                         if (type != null && row != null && col != null && health != null && health > 0) {
-                            updatedEnemyUnits.add(new SetupActivity.UnitPosition(row, col, type, health));
+                            SetupActivity.UnitPosition u = new SetupActivity.UnitPosition(row, col, type, health);
+                            String roseColor = unitSnap.child("roseColor").getValue(String.class);
+                            Boolean abilityUsed = unitSnap.child("abilityUsed").getValue(Boolean.class);
+                            if (roseColor != null) u.roseColor = roseColor;
+                            if (abilityUsed != null) u.abilityUsed = abilityUsed;
+                            updatedEnemyUnits.add(u);
                         }
                     }
 
@@ -599,9 +608,9 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                                 final int newCol = updatedUnit.col;
                                 final SetupActivity.UnitPosition finalUpdatedUnit = updatedUnit;
 
-                                Log.d(TAG, "🐱 ENEMY CAT TELEPORTED!");
-                                Log.d(TAG, "   From: (" + oldRow + "," + oldCol + ")");
-                                Log.d(TAG, "   To: (" + newRow + "," + newCol + ")");
+                                Log.d(TAG, "ENEMY CAT TELEPORTED!");
+                                Log.d(TAG, "From: (" + oldRow + "," + oldCol + ")");
+                                Log.d(TAG, "To: (" + newRow + "," + newCol + ")");
 
                                 runOnUiThread(() -> {
                                     // Clear old position
@@ -675,7 +684,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                             final int deadCatRow = oldCat.row;
                             final int deadCatCol = oldCat.col;
 
-                            Log.d(TAG, "🐱💀 ENEMY CAT DIED at (" + deadCatRow + "," + deadCatCol + ")");
+                            Log.d(TAG, "ENEMY CAT DIED at (" + deadCatRow + "," + deadCatCol + ")");
 
                             runOnUiThread(() -> {
                                 ImageView deadCell = enemyCells[deadCatRow][deadCatCol];
@@ -689,6 +698,31 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                                     Log.d(TAG, "Showed cat death animation");
                                 }
                             });
+                        }
+                    }
+
+                    // Check for rose color changes and update enemy grid
+                    for (SetupActivity.UnitPosition updatedUnit : updatedEnemyUnits) {
+                        if ("rose".equals(updatedUnit.type)) {
+                            for (SetupActivity.UnitPosition localUnit : enemyUnits) {
+                                if ("rose".equals(localUnit.type) &&
+                                        localUnit.row == updatedUnit.row &&
+                                        localUnit.col == updatedUnit.col &&
+                                        !localUnit.roseColor.equals(updatedUnit.roseColor)) {
+
+                                    final int roseRow = updatedUnit.row;
+                                    final int roseCol = updatedUnit.col;
+                                    final SetupActivity.UnitPosition finalRose = updatedUnit;
+
+                                    runOnUiThread(() -> {
+                                        if (enemyRevealedCells[roseRow][roseCol]) {
+                                            enemyCells[roseRow][roseCol].setImageResource(
+                                                    abilityManager.getRoseIcon(finalRose));
+                                        }
+                                    });
+                                    break;
+                                }
+                            }
                         }
                     }
 
@@ -973,7 +1007,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                     Integer fearCol = fear.child("col").getValue(Integer.class);
 
                     if (fearRow != null && fearRow == row && fearCol != null && fearCol == col) {
-                        Log.d(TAG, "🐕 DOG FEAR BLOCKED!");
+                        Log.d(TAG, "DOG FEAR BLOCKED!");
 
                         runOnUiThread(() -> {
                             ImageView cell = enemyCells[row][col];
@@ -1225,7 +1259,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
             if (wasHit) {
                 // CAT TELEPORT before destruction
                 if (unit.type.equals("cat") && !unit.abilityUsed) {
-                    Log.d(TAG, "🐱 Cat teleporting after DIRECT HIT!");
+                    Log.d(TAG, "Cat teleporting after DIRECT HIT!");
                     executeCatTeleport(unit, cell);
                     return; // Don't destroy the cat
                 }
@@ -1251,7 +1285,7 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
                     // CAT TELEPORT on partial hit death
                     if (unit.type.equals("cat") && !unit.abilityUsed) {
-                        Log.d(TAG, "🐱 Cat teleporting after PARTIAL HIT death!");
+                        Log.d(TAG, "Cat teleporting after PARTIAL HIT death!");
                         executeCatTeleport(unit, cell);
                         return; // Don't destroy the cat
                     }
@@ -1272,13 +1306,14 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
                 // Rose color change ability
                 if (unit.type.equals("rose") && !unit.abilityUsed) {
-                    Log.d(TAG, "🌹 Rose changing color");
+                    Log.d(TAG, "Rose changing color");
                     abilityManager.activateRoseColorChange(unit, cell);
+                    saveRoseColorToFirebase(unit.row, unit.col, unit.roseColor);
                 }
 
                 // Dog fear activation (only if survived)
                 if (unit.type.equals("dog") && !unit.abilityUsed) {
-                    Log.d(TAG, "🐕 Dog activating fear");
+                    Log.d(TAG, "Dog activating fear");
                     new Handler().postDelayed(() -> {
                         abilityManager.activateDogFear(unit, cell);
                         saveDogFearToFirebase(unit.row, unit.col);
@@ -1415,6 +1450,30 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
                 Log.e(TAG, "Error: " + error.getMessage());
+            }
+        });
+    }
+
+    private void saveRoseColorToFirebase(int row, int col, String color) {
+        firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                DataSnapshot unitsSnapshot = snapshot.child("units").child(myPlayerKey);
+                for (DataSnapshot unitSnap : unitsSnapshot.getChildren()) {
+                    Integer r = unitSnap.child("row").getValue(Integer.class);
+                    Integer c = unitSnap.child("col").getValue(Integer.class);
+                    if (r != null && r == row && c != null && c == col) {
+                        unitSnap.getRef().child("roseColor").setValue(color);
+                        unitSnap.getRef().child("abilityUsed").setValue(true);
+                        break;
+                    }
+                }
+                snapshot.getRef().removeEventListener(this);
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e(TAG, "Error saving rose color: " + error.getMessage());
             }
         });
     }
@@ -1586,6 +1645,8 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
                         } else {
                             // Still alive - show damage
                             cell.setBackgroundColor(Color.parseColor("#FFA500"));
+                            cell.setImageResource("rose".equals(u.type) ? abilityManager.getRoseIcon(u) : getUnitIcon(u.type, true));
+                            cell.setAlpha(1f);
                         }
                         break;
                     }
@@ -2141,8 +2202,44 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
     }
 
     private void revealAreaWithSpyDrone(int centerRow, int centerCol) {
-        int revealed = 0;
+        // Fetch fresh data from Firebase first so the reveal is accurate even on first use
+        firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                snapshot.getRef().removeEventListener(this);
 
+                DataSnapshot opponentUnitsSnapshot = snapshot.child("units").child(opponentPlayerKey);
+                if (opponentUnitsSnapshot.exists()) {
+                    List<SetupActivity.UnitPosition> freshUnits = new ArrayList<>();
+                    for (DataSnapshot unitSnap : opponentUnitsSnapshot.getChildren()) {
+                        String type = unitSnap.child("type").getValue(String.class);
+                        Integer r = unitSnap.child("row").getValue(Integer.class);
+                        Integer c = unitSnap.child("col").getValue(Integer.class);
+                        Integer health = unitSnap.child("health").getValue(Integer.class);
+                        if (type != null && r != null && c != null && health != null && health > 0) {
+                            SetupActivity.UnitPosition u = new SetupActivity.UnitPosition(r, c, type, health);
+                            String roseColor = unitSnap.child("roseColor").getValue(String.class);
+                            Boolean abilityUsed = unitSnap.child("abilityUsed").getValue(Boolean.class);
+                            if (roseColor != null) u.roseColor = roseColor;
+                            if (abilityUsed != null) u.abilityUsed = abilityUsed;
+                            freshUnits.add(u);
+                        }
+                    }
+                    enemyUnits = freshUnits;
+                }
+
+                runOnUiThread(() -> performSpyDroneReveal(centerRow, centerCol));
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e(TAG, "Spy drone fetch failed: " + error.getMessage());
+                runOnUiThread(() -> performSpyDroneReveal(centerRow, centerCol));
+            }
+        });
+    }
+
+    private void performSpyDroneReveal(int centerRow, int centerCol) {
         for (int row = centerRow - 1; row <= centerRow + 1; row++) {
             for (int col = centerCol - 1; col <= centerCol + 1; col++) {
                 if (row >= 0 && row < 8 && col >= 0 && col < 8) {
@@ -2150,41 +2247,30 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
                     if (!enemyRevealedCells[row][col]) {
                         enemyRevealedCells[row][col] = true;
-                        revealed++;
 
-                        // Check if there's an enemy unit here (now we have the data!)
                         boolean hasUnit = false;
                         for (SetupActivity.UnitPosition unit : enemyUnits) {
                             if (unit.row == row && unit.col == col && unit.health > 0) {
-                                // Found a unit! Show it
                                 cell.setBackgroundColor(Color.parseColor("#FFE082")); // Yellow
-                                cell.setImageResource(getUnitIcon(unit.type, true));
+                                int icon = "rose".equals(unit.type) ? abilityManager.getRoseIcon(unit) : getUnitIcon(unit.type, true);
+                                cell.setImageResource(icon);
                                 cell.setAlpha(1f);
                                 hasUnit = true;
-
                                 Log.d(TAG, "Spy Drone revealed unit: " + unit.type + " at (" + row + "," + col + ")");
                                 break;
                             }
                         }
 
                         if (!hasUnit) {
-                            // Empty cell
                             cell.setBackgroundColor(Color.parseColor("#C5E1A5")); // Light green
                             cell.setAlpha(1f);
                         }
 
-                        // Animation
                         cell.animate()
                                 .scaleX(1.1f)
                                 .scaleY(1.1f)
                                 .setDuration(200)
-                                .withEndAction(() -> {
-                                    cell.animate()
-                                            .scaleX(1f)
-                                            .scaleY(1f)
-                                            .setDuration(200)
-                                            .start();
-                                })
+                                .withEndAction(() -> cell.animate().scaleX(1f).scaleY(1f).setDuration(200).start())
                                 .start();
                     }
                 }
@@ -2193,7 +2279,6 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
         powerManager.useTier2Power();
 
-        // Save to Firebase
         FirebaseGameRoom.LastActionData powerAction = new FirebaseGameRoom.LastActionData();
         powerAction.type = "power_used";
         powerAction.player = myPlayerKey;
@@ -2201,9 +2286,9 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
 
         firebaseManager.listenToRoom(roomCode, new ValueEventListener() {
             @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                snapshot.getRef().child("lastAction").child("powerType").setValue("spy_drone");
-                snapshot.getRef().removeEventListener(this);
+            public void onDataChange(@NonNull DataSnapshot snap) {
+                snap.getRef().child("lastAction").child("powerType").setValue("spy_drone");
+                snap.getRef().removeEventListener(this);
             }
 
             @Override
@@ -2211,7 +2296,6 @@ public class MultiplayerBattleActivity extends AppCompatActivity {
         });
 
         firebaseManager.sendAction(roomCode, powerAction);
-
         cancelPowerMode();
         updatePowerButtons();
     }

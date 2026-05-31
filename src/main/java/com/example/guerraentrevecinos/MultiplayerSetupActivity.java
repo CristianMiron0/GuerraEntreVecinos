@@ -83,8 +83,6 @@ public class MultiplayerSetupActivity extends AppCompatActivity {
         tvStatusText.setTextColor(Color.WHITE);
         tvStatusText.setPadding(16, 8, 16, 8);
         tvStatusText.setBackgroundColor(Color.parseColor("#FF9800"));
-
-        // You can add this to your layout or keep it in a toast
     }
 
     private void initializeViews() {

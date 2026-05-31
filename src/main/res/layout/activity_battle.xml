@@ -6,9 +6,7 @@
     android:layout_height="match_parent"
     android:background="#87CEEB">
 
-    <!-- ============================================ -->
-    <!-- NORTH ZONE: House + Power Bar overlay       -->
-    <!-- ============================================ -->
+    <!-- NORTH ZONE: House + Power Bar overlay -->
     <FrameLayout
         android:id="@+id/northSection"
         android:layout_width="match_parent"
@@ -24,7 +22,7 @@
             android:src="@drawable/house2"
             android:contentDescription="Your House" />
 
-        <!-- Round counter (small, top-left) -->
+        <!-- Round counter -->
         <TextView
             android:id="@+id/tvRoundCounter"
             android:layout_width="wrap_content"
@@ -38,7 +36,7 @@
             android:layout_gravity="top|start"
             android:layout_margin="8dp" />
 
-        <!-- Turn indicator (small, top-right) -->
+        <!-- Turn indicator -->
         <TextView
             android:id="@+id/tvTurnIndicator"
             android:layout_width="wrap_content"
@@ -107,10 +105,8 @@
         </LinearLayout>
     </FrameLayout>
 
-    <!-- ============================================ -->
     <!-- MIDDLE ZONE: Garden battlefield              -->
     <!-- Contains BOTH grids; only one shows at a time-->
-    <!-- ============================================ -->
     <FrameLayout
         android:id="@+id/middleSection"
         android:layout_width="match_parent"
@@ -160,9 +156,7 @@
 
     </FrameLayout>
 
-    <!-- ============================================ -->
     <!-- SOUTH ZONE: Fence + Angry Neighbour          -->
-    <!-- ============================================ -->
     <FrameLayout
         android:id="@+id/southSection"
         android:layout_width="match_parent"

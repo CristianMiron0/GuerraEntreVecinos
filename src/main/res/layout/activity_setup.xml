@@ -6,9 +6,7 @@
     android:layout_height="match_parent"
     android:background="#87CEEB">
 
-    <!-- ============================================ -->
     <!-- NORTH ZONE: House + Unit Selection Menu      -->
-    <!-- ============================================ -->
     <FrameLayout
         android:id="@+id/northSection"
         android:layout_width="match_parent"
@@ -136,9 +134,7 @@
         </LinearLayout>
     </FrameLayout>
 
-    <!-- ============================================ -->
     <!-- MIDDLE ZONE: 8x8 Garden Grid                 -->
-    <!-- ============================================ -->
     <FrameLayout
         android:id="@+id/middleSection"
         android:layout_width="match_parent"
@@ -165,9 +161,7 @@
 
     </FrameLayout>
 
-    <!-- ============================================ -->
     <!-- SOUTH ZONE: Fence + Angry Neighbour          -->
-    <!-- ============================================ -->
     <FrameLayout
         android:id="@+id/southSection"
         android:layout_width="match_parent"

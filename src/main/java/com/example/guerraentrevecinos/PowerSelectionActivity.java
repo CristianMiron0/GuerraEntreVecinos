@@ -17,7 +17,7 @@ public class PowerSelectionActivity extends AppCompatActivity {
     private String selectedPower = null;
     private String gameMode;
 
-    // ✅ Multiplayer fields
+    // Multiplayer fields
     private String roomCode;
     private boolean isHost;
 
@@ -29,7 +29,7 @@ public class PowerSelectionActivity extends AppCompatActivity {
         // Get game mode
         gameMode = getIntent().getStringExtra("GAME_MODE");
 
-        // ✅ Get multiplayer data
+        // Get multiplayer data
         roomCode = getIntent().getStringExtra("ROOM_CODE");
         isHost = getIntent().getBooleanExtra("IS_HOST", false);
 
@@ -44,7 +44,7 @@ public class PowerSelectionActivity extends AppCompatActivity {
             Intent intent = new Intent(this, SetupActivity.class);
             intent.putExtra("GAME_MODE", gameMode);
             intent.putExtra("SELECTED_POWER", selectedPower);
-            // ✅ Pass multiplayer data
+            // Pass multiplayer data
             if (gameMode.equals("MULTIPLAYER")) {
                 intent.putExtra("ROOM_CODE", roomCode);
                 intent.putExtra("IS_HOST", isHost);

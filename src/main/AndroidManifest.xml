@@ -50,7 +50,7 @@
             android:screenOrientation="portrait"
             android:exported="false" />
 
-        <!-- ✅ Statistics -->
+        <!-- Statistics -->
         <activity
             android:name=".StatisticsActivity"
             android:screenOrientation="portrait"

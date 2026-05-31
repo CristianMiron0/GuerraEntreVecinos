@@ -2,11 +2,11 @@ package com.example.guerraentrevecinos;
 
 public class PowerManager {
 
-    // Tier 1 Powers (always available)
+    // Tier 1 Powers
     private int gardenHoseCooldown = 0;
     private int nighttimeRelocationCooldown = 0;
 
-    // Tier 2 Power (selected one)
+    // Tier 2 Power
     private String tier2Power;
     private int tier2PowerCooldown = 0;
 
@@ -25,7 +25,7 @@ public class PowerManager {
         this.tier2Power = tier2Power;
     }
 
-    // ✅ FIX: Garden Hose - activate and set cooldown
+    // Garden Hose activate and set cooldown
     public boolean canUseGardenHose() {
         return gardenHoseCooldown <= 0 && !gardenHoseActive;
     }
@@ -41,7 +41,7 @@ public class PowerManager {
         return gardenHoseActive;
     }
 
-    // ✅ FIX: Deactivate after use (called after mini-duel)
+    // Deactivate after use (called after mini-duel)
     public void deactivateGardenHose() {
         gardenHoseActive = false;
     }
@@ -89,7 +89,7 @@ public class PowerManager {
         fenceProtectedUnit = null;
     }
 
-    // ✅ FIX: Reduce cooldowns each round
+    // Reduce cooldowns each round
     public void decrementCooldowns() {
         if (gardenHoseCooldown > 0) gardenHoseCooldown--;
         if (nighttimeRelocationCooldown > 0) nighttimeRelocationCooldown--;

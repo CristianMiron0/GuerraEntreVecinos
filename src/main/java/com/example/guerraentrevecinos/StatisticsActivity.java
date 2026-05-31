@@ -105,12 +105,12 @@ public class StatisticsActivity extends AppCompatActivity {
                 Integer fastestWin = database.gameDao().getFastestWinRounds(player.getPlayerId());
                 int fastestWinRounds = (fastestWin != null) ? fastestWin : 0;
 
-                // ✅ FIX: Calculate stats properly
+                // Calculate stats properly
                 List<Game> finishedGames = database.gameDao().getAllFinishedGames();
                 float bestAccuracy = 0f;
                 int mostUnitsDestroyed = 0;
                 int totalAttacks = 0;
-                int totalSuccessfulHits = 0; // ✅ Track for overall accuracy
+                int totalSuccessfulHits = 0;
 
                 for (Game game : finishedGames) {
                     // Only count games where player participated
@@ -121,7 +121,7 @@ public class StatisticsActivity extends AppCompatActivity {
                                 .getStatsByGameAndPlayer(game.getGameId(), player.getPlayerId());
 
                         if (stats != null) {
-                            // ✅ Calculate accuracy if not set
+                            // Calculate accuracy if not set
                             if (stats.getTotalAttacks() > 0) {
                                 float gameAccuracy = (stats.getSuccessfulHits() * 100f) / stats.getTotalAttacks();
                                 stats.setAccuracyPercentage(gameAccuracy);
@@ -145,7 +145,7 @@ public class StatisticsActivity extends AppCompatActivity {
                     }
                 }
 
-                // ✅ Calculate overall accuracy
+                // Calculate overall accuracy
                 float overallAccuracy = totalAttacks > 0 ?
                         (totalSuccessfulHits * 100f) / totalAttacks : 0f;
 
@@ -167,7 +167,7 @@ public class StatisticsActivity extends AppCompatActivity {
                         int unitsDestroyed = 0;
 
                         if (stats != null) {
-                            // ✅ Recalculate accuracy for display
+                            // Recalculate accuracy for display
                             if (stats.getTotalAttacks() > 0) {
                                 accuracy = (stats.getSuccessfulHits() * 100f) / stats.getTotalAttacks();
                             }
@@ -197,7 +197,7 @@ public class StatisticsActivity extends AppCompatActivity {
                 final int finalTotalAttacks = totalAttacks;
                 final int finalWinStreak = winStreak;
                 final int finalFastestWin = fastestWinRounds;
-                final float finalOverallAccuracy = overallAccuracy; // ✅ NEW
+                final float finalOverallAccuracy = overallAccuracy;
 
                 runOnUiThread(() -> {
                     if (finalTotalGames == 0) {

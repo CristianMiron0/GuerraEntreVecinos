@@ -70,7 +70,7 @@ public class WaitingRoomActivity extends AppCompatActivity {
                 if (player1Present && player2Present) {
                     // Both players connected!
                     binding.tvStatus.setText("Opponent joined! Starting game...");
-                    binding.tvOpponentStatus.setText("✅ Opponent: Ready");
+                    binding.tvOpponentStatus.setText("Opponent: Ready");
                     binding.tvOpponentStatus.setTextColor(getColor(android.R.color.holo_green_dark));
 
                     // Wait a moment then go to power selection

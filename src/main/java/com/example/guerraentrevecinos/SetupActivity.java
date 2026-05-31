@@ -52,7 +52,7 @@ public class SetupActivity extends AppCompatActivity {
 
         gameMode = getIntent().getStringExtra("GAME_MODE");
 
-        // ✅ Route to multiplayer setup if multiplayer mode
+        // Route to multiplayer setup if its multiplayer mode
         if ("MULTIPLAYER".equals(gameMode)) {
             Intent intent = new Intent(this, MultiplayerSetupActivity.class);
             intent.putExtras(getIntent().getExtras());
@@ -263,7 +263,7 @@ public class SetupActivity extends AppCompatActivity {
         // Generate AI unit positions
         List<UnitPosition> aiUnits = generateAIUnits();
 
-        // ✅ Save game to database in background thread
+        // Save game to database in background thread
         AppDatabase.databaseWriteExecutor.execute(() -> {
             try {
                 // 1. Get or create human player
@@ -316,16 +316,16 @@ public class SetupActivity extends AppCompatActivity {
                 database.gameStatsDao().insert(new GameStats((int) gameId, humanPlayer.getPlayerId()));
                 database.gameStatsDao().insert(new GameStats((int) gameId, aiPlayer.getPlayerId()));
 
-                // 8. Launch battle activity
+                // 7. Launch battle activity
                 Player finalHumanPlayer = humanPlayer;
                 Player finalAiPlayer = aiPlayer;
                 runOnUiThread(() -> {
                     Intent intent = new Intent(SetupActivity.this, BattleActivity.class);
                     intent.putExtra("GAME_MODE", gameMode);
-                    intent.putExtra("GAME_ID", (int) gameId); // ✅ Pass game ID
+                    intent.putExtra("GAME_ID", (int) gameId);
                     intent.putExtra("PLAYER_ID", finalHumanPlayer.getPlayerId());
                     intent.putExtra("AI_PLAYER_ID", finalAiPlayer.getPlayerId());
-                    intent.putExtra("SELECTED_POWER", getIntent().getStringExtra("SELECTED_POWER")); // ✅ Pass power
+                    intent.putExtra("SELECTED_POWER", getIntent().getStringExtra("SELECTED_POWER"));
                     intent.putParcelableArrayListExtra("PLAYER_UNITS", new ArrayList<>(playerUnits));
                     intent.putParcelableArrayListExtra("AI_UNITS", new ArrayList<>(aiUnits));
                     startActivity(intent);
@@ -395,7 +395,7 @@ public class SetupActivity extends AppCompatActivity {
         public String type;
         public int health;
 
-        // ✅ NEW: Ability tracking
+        // Ability tracking
         public boolean abilityUsed = false;
         public String roseColor = "red"; // For rose: red, blue, white, black
         public boolean dogFearActive = false; // For dog fear
